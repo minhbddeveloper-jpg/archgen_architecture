@@ -1,0 +1,26 @@
+{
+  "name": "archgen",
+  "version": "0.1.0",
+  "description": "Multi-language Clean Architecture project generator.",
+  "type": "module",
+  "bin": {
+    "archgen": "./dist/bin/archgen.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bin/archgen.js",
+    "dev": "tsx bin/archgen.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
