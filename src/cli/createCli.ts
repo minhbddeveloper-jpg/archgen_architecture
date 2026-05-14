@@ -5,7 +5,8 @@ import { EntityConfig, EntityFieldConfig, FieldType, ProjectConfig } from "../co
 import { Plugin } from "../core/domain/plugin.js";
 import { Logger } from "../shared/logger.js";
 
-type CliOptions = Record<string, string | boolean>;
+type CliValue = string | boolean | string[];
+type CliOptions = Record<string, CliValue>;
 
 interface Cli {
   run(args: string[]): Promise<void>;
@@ -79,11 +80,31 @@ function parseOptions(args: string[]): CliOptions {
       throw new Error(`Missing value for option --${key}`);
     }
 
-    options[key] = value;
+    appendOption(options, key, value);
     index += 1;
   }
 
   return options;
+}
+
+function appendOption(options: CliOptions, key: string, value: string): void {
+  const current = options[key];
+  if (current === undefined) {
+    options[key] = value;
+    return;
+  }
+
+  if (typeof current === "string") {
+    options[key] = [current, value];
+    return;
+  }
+
+  if (Array.isArray(current)) {
+    current.push(value);
+    return;
+  }
+
+  throw new Error(`--${key} cannot be combined with a value`);
 }
 
 async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjectRequest> {
@@ -108,7 +129,7 @@ async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjec
       database: optionalString(merged, "database"),
       orm: optionalString(merged, "orm"),
       auth: optionalString(merged, "auth"),
-      entities: validateEntities(merged.entities)
+      entities: parseCliEntities(options) ?? validateEntities(merged.entities)
     },
     outputRoot: stringOption(options, "out") ?? optionalString(fileConfig, "out") ?? optionalString(fileConfig, "outputDir") ?? "."
   };
@@ -125,8 +146,8 @@ async function readConfigFile(path: string): Promise<Record<string, unknown>> {
   return parsed;
 }
 
-function removeCliOnlyOptions(options: CliOptions): Record<string, string | boolean> {
-  const { config: _config, out: _out, force: _force, "dry-run": _dryRun, ...projectOptions } = options;
+function removeCliOnlyOptions(options: CliOptions): Record<string, CliValue> {
+  const { config: _config, out: _out, force: _force, "dry-run": _dryRun, entity: _entity, field: _field, ...projectOptions } = options;
   return projectOptions;
 }
 
@@ -141,6 +162,23 @@ function stringOption(options: CliOptions, key: string): string | undefined {
   }
 
   return value;
+}
+
+function stringListOption(options: CliOptions, key: string): string[] {
+  const value = options[key];
+  if (value === undefined) {
+    return [];
+  }
+
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  throw new Error(`--${key} requires a value`);
 }
 
 function booleanOption(options: CliOptions, key: string): boolean {
@@ -222,6 +260,75 @@ function validateEntities(value: unknown): EntityConfig[] | undefined {
   });
 }
 
+function parseCliEntities(options: CliOptions): EntityConfig[] | undefined {
+  const entityNames = stringListOption(options, "entity");
+  const fieldSpecs = stringListOption(options, "field");
+
+  if (entityNames.length === 0 && fieldSpecs.length === 0) {
+    return undefined;
+  }
+
+  if (entityNames.length === 0) {
+    throw new Error("--field requires at least one --entity");
+  }
+
+  const entities = new Map<string, EntityConfig>();
+  for (const name of entityNames) {
+    if (!name) {
+      throw new Error("--entity must be a non-empty value");
+    }
+    entities.set(name, { name, fields: [] });
+  }
+
+  for (const spec of fieldSpecs) {
+    const { entityName, field } = parseFieldSpec(spec, entityNames);
+    const entity = entities.get(entityName);
+    if (!entity) {
+      throw new Error(`Field "${spec}" references unknown entity "${entityName}"`);
+    }
+    entity.fields.push(field);
+  }
+
+  return [...entities.values()];
+}
+
+function parseFieldSpec(spec: string, entityNames: string[]): { entityName: string; field: EntityFieldConfig } {
+  const [left, rawType, rawRequired] = spec.split(":");
+  if (!left || !rawType) {
+    throw new Error(`Invalid --field "${spec}". Use entity.field:type or field:type`);
+  }
+
+  const leftParts = left.split(".");
+  const entityName = leftParts.length === 2 ? leftParts[0] : inferSingleEntity(entityNames, spec);
+  const fieldName = leftParts.length === 2 ? leftParts[1] : leftParts[0];
+  const optionalBySuffix = rawType.endsWith("?");
+  const type = optionalBySuffix ? rawType.slice(0, -1) : rawType;
+
+  if (!fieldName) {
+    throw new Error(`Invalid field name in --field "${spec}"`);
+  }
+
+  if (!isFieldType(type)) {
+    throw new Error(`Invalid field type in --field "${spec}"`);
+  }
+
+  return {
+    entityName,
+    field: {
+      name: fieldName,
+      type,
+      required: rawRequired === "optional" || optionalBySuffix ? false : undefined
+    }
+  };
+}
+
+function inferSingleEntity(entityNames: string[], spec: string): string {
+  if (entityNames.length !== 1) {
+    throw new Error(`Field "${spec}" must use entity.field:type when multiple entities are declared`);
+  }
+  return entityNames[0];
+}
+
 function validateField(value: unknown, entityIndex: number, fieldIndex: number): EntityFieldConfig {
   if (!isRecord(value) || typeof value.name !== "string" || !value.name) {
     throw new Error(`entities[${entityIndex}].fields[${fieldIndex}].name must be a non-empty string`);
@@ -250,7 +357,7 @@ function printHelp(logger: Logger): void {
   logger.info(`archgen
 
 Commands:
-  create --name <name> --language <language> --framework <framework> [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
   list plugins
   doctor`);
 }

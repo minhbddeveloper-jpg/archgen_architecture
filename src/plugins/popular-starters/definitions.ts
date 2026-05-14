@@ -15,7 +15,15 @@ export const starterDefinitions: StarterDefinition[] = [
       { template: "src/main.tsx.hbs", output: "{{projectSlug}}/src/main.tsx" },
       { template: "README.md.hbs", output: "{{projectSlug}}/README.md" }
     ],
-    keepDirs: ["{{projectSlug}}/src/domain/models", "{{projectSlug}}/src/application/services", "{{projectSlug}}/src/infrastructure/adapters"]
+    keepDirs: [
+      "{{projectSlug}}/src/app",
+      "{{projectSlug}}/src/features",
+      "{{projectSlug}}/src/components",
+      "{{projectSlug}}/src/services",
+      "{{projectSlug}}/src/hooks",
+      "{{projectSlug}}/src/shared",
+      "{{projectSlug}}/src/routes"
+    ]
   },
   {
     name: "typescript-express",
@@ -30,9 +38,11 @@ export const starterDefinitions: StarterDefinition[] = [
     ],
     keepDirs: [
       "{{projectSlug}}/src/domain/entities",
-      "{{projectSlug}}/src/application/services",
+      "{{projectSlug}}/src/application/use-cases",
+      "{{projectSlug}}/src/application/ports",
       "{{projectSlug}}/src/infrastructure/repositories",
-      "{{projectSlug}}/src/presentation/controllers"
+      "{{projectSlug}}/src/presentation/controllers",
+      "{{projectSlug}}/src/presentation/routes"
     ],
     crudStyle: "typescript-express"
   },
@@ -139,10 +149,11 @@ export const starterDefinitions: StarterDefinition[] = [
       { template: "README.md.hbs", output: "{{projectSlug}}/README.md" }
     ],
     keepDirs: [
-      "{{projectSlug}}/internal/domain/entities",
-      "{{projectSlug}}/internal/application/services",
-      "{{projectSlug}}/internal/infrastructure/repositories",
-      "{{projectSlug}}/internal/presentation/handlers"
+      "{{projectSlug}}/internal/domain",
+      "{{projectSlug}}/internal/usecase",
+      "{{projectSlug}}/internal/repository",
+      "{{projectSlug}}/internal/handler",
+      "{{projectSlug}}/internal/server"
     ],
     crudStyle: "go-gin"
   },

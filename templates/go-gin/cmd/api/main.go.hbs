@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 {{#if hasEntities}}
-	"{{moduleName}}/internal/presentation/handlers"
+	"{{moduleName}}/internal/handler"
 {{/if}}
 )
 
@@ -19,7 +19,7 @@ func main() {
 		})
 	})
 {{#each entities}}
-	handlers.Register{{className}}Routes(router)
+	handler.Register{{className}}Routes(router)
 {{/each}}
 
 	if err := router.Run(); err != nil {

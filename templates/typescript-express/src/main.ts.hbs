@@ -1,6 +1,6 @@
 import express from "express";
 {{#each entities}}
-import { create{{className}}Router } from "./presentation/controllers/{{camelName}}Controller.js";
+import { create{{className}}Router } from "./presentation/routes/{{camelName}}Routes.js";
 {{/each}}
 
 const app = express();
