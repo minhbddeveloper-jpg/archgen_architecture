@@ -1,11 +1,12 @@
 import { GeneratedFile } from "../domain/generatedFile.js";
 import { Plugin } from "../domain/plugin.js";
 import { ProjectConfig } from "../domain/projectConfig.js";
-import { FileWriter } from "./ports/fileWriter.js";
+import { FileWriter, WriteFilesOptions } from "./ports/fileWriter.js";
 
 export interface CreateProjectResult {
   outputRoot: string;
   filesWritten: number;
+  dryRun: boolean;
 }
 
 export class GeneratorEngine {
@@ -14,7 +15,11 @@ export class GeneratorEngine {
     private readonly fileWriter: FileWriter
   ) {}
 
-  async createProject(config: ProjectConfig, outputRoot: string): Promise<CreateProjectResult> {
+  async createProject(
+    config: ProjectConfig,
+    outputRoot: string,
+    options: WriteFilesOptions = {}
+  ): Promise<CreateProjectResult> {
     const plugin = this.plugins.find((candidate) => candidate.supports(config));
 
     if (!plugin) {
@@ -26,11 +31,12 @@ export class GeneratorEngine {
       files.push(...(await generator.generate(config)));
     }
 
-    await this.fileWriter.writeFiles(outputRoot, files);
+    await this.fileWriter.writeFiles(outputRoot, files, options);
 
     return {
       outputRoot,
-      filesWritten: files.length
+      filesWritten: files.length,
+      dryRun: options.dryRun ?? false
     };
   }
 }

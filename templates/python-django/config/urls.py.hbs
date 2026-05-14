@@ -1,0 +1,21 @@
+from django.http import JsonResponse
+from django.urls import path
+{{#each entities}}
+from presentation.views.{{moduleName}}_views import create_{{moduleName}}, delete_{{moduleName}}, get_{{moduleName}}, list_{{routeName}}, update_{{moduleName}}
+{{/each}}
+
+
+def health(_request):
+    return JsonResponse({"status": "ok", "service": "{{projectSlug}}"})
+
+
+urlpatterns = [
+    path("health", health),
+{{#each entities}}
+    path("{{routeName}}", list_{{routeName}}),
+    path("{{routeName}}/", create_{{moduleName}}),
+    path("{{routeName}}/<str:record_id>", get_{{moduleName}}),
+    path("{{routeName}}/<str:record_id>/update", update_{{moduleName}}),
+    path("{{routeName}}/<str:record_id>/delete", delete_{{moduleName}}),
+{{/each}}
+]

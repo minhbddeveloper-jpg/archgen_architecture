@@ -1,0 +1,14 @@
+from fastapi import FastAPI
+{{#each entities}}
+from app.presentation.routers.{{moduleName}}_router import router as {{moduleName}}_router
+{{/each}}
+
+app = FastAPI(title="{{projectName}}")
+{{#each entities}}
+app.include_router({{moduleName}}_router)
+{{/each}}
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "{{projectSlug}}"}

@@ -1,0 +1,11 @@
+[project]
+name = "{{projectSlug}}"
+version = "0.1.0"
+requires-python = ">={{languageVersion}}"
+dependencies = [
+  "fastapi>={{frameworkVersion}}",
+  "uvicorn[standard]>={{uvicornVersion}}"
+]
+
+[tool.uvicorn]
+factory = false

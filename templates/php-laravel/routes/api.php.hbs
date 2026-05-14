@@ -1,0 +1,21 @@
+<?php
+
+{{#each entities}}
+use App\Http\Controllers\{{className}}Controller;
+{{/each}}
+use Illuminate\Support\Facades\Route;
+
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'service' => '{{projectSlug}}',
+    ]);
+});
+{{#each entities}}
+
+Route::get('/{{routeName}}', [{{className}}Controller::class, 'index']);
+Route::get('/{{routeName}}/{id}', [{{className}}Controller::class, 'show']);
+Route::post('/{{routeName}}', [{{className}}Controller::class, 'store']);
+Route::put('/{{routeName}}/{id}', [{{className}}Controller::class, 'update']);
+Route::delete('/{{routeName}}/{id}', [{{className}}Controller::class, 'destroy']);
+{{/each}}

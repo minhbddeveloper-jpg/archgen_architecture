@@ -1,0 +1,34 @@
+{{#each entities}}
+using {{../className}}.Application.Services;
+using {{../className}}.Domain.Entities;
+{{/each}}
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+{{#each entities}}
+var {{camelName}}Service = new {{className}}Service();
+{{/each}}
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "ok",
+    service = "{{projectSlug}}"
+}));
+
+{{#each entities}}
+app.MapGet("/{{routeName}}", () => Results.Ok({{camelName}}Service.List()));
+app.MapGet("/{{routeName}}/{id:guid}", (Guid id) =>
+{
+    var record = {{camelName}}Service.Get(id);
+    return record is null ? Results.NotFound() : Results.Ok(record);
+});
+app.MapPost("/{{routeName}}", ({{className}} record) => Results.Created($"/{{routeName}}/{record.Id}", {{camelName}}Service.Create(record)));
+app.MapPut("/{{routeName}}/{id:guid}", (Guid id, {{className}} record) =>
+{
+    var updated = {{camelName}}Service.Update(id, record);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+});
+app.MapDelete("/{{routeName}}/{id:guid}", (Guid id) => {{camelName}}Service.Delete(id) ? Results.NoContent() : Results.NotFound());
+{{/each}}
+
+app.Run();

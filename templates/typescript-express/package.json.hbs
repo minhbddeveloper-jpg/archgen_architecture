@@ -1,0 +1,20 @@
+{
+  "name": "{{projectSlug}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "express": "^{{frameworkVersion}}"
+  },
+  "devDependencies": {
+    "@types/express": "^{{expressTypesVersion}}",
+    "@types/node": "^{{nodeTypesVersion}}",
+    "tsx": "^{{tsxVersion}}",
+    "typescript": "^{{languageVersion}}"
+  }
+}

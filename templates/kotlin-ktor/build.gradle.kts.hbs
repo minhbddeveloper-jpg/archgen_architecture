@@ -1,0 +1,20 @@
+plugins {
+    kotlin("jvm") version "{{languageVersion}}"
+    kotlin("plugin.serialization") version "{{languageVersion}}"
+    application
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("io.ktor:ktor-server-core-jvm:{{frameworkVersion}}")
+    implementation("io.ktor:ktor-server-netty-jvm:{{frameworkVersion}}")
+    implementation("io.ktor:ktor-server-content-negotiation-jvm:{{frameworkVersion}}")
+    implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:{{frameworkVersion}}")
+}
+
+application {
+    mainClass.set("{{packageName}}.ApplicationKt")
+}
