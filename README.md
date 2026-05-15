@@ -253,6 +253,33 @@ arxgen add schema \
   --validation zod
 ```
 
+Upgrade an existing generated Express project after the SQL schema changes:
+
+```bash
+arxgen upgrade schema \
+  --from-sql ./schema.sql \
+  --project ./generated/student-api \
+  --dry-run
+```
+
+When the preview looks correct, run it without `--dry-run`:
+
+```bash
+arxgen upgrade schema \
+  --from-sql ./schema.sql \
+  --project ./generated/student-api
+```
+
+Schema upgrade currently performs safe additive changes for generated TypeScript Express projects:
+
+- Detects new fields from the SQL schema
+- Patches domain entities
+- Patches Zod/Joi/class-validator validation schemas when present
+- Patches create use cases so new fields are copied from input
+- Patches Prisma models when `prisma/schema.prisma` exists
+- Creates new entities if the SQL schema contains new tables
+- Does not delete or rename existing fields automatically
+
 Useful flags:
 
 | Flag | Description |
@@ -288,6 +315,10 @@ Useful flags:
 | `--out <dir>` | Output directory. Defaults to current directory. |
 | `--dry-run` | Validates generation without writing files. |
 | `--force` | Allows overwriting existing files. |
+
+Release note rule:
+
+- Every version update must include a markdown file under `docs/releases/`.
 
 Field syntax:
 

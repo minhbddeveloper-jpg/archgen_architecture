@@ -443,6 +443,102 @@ test("adds entities from a SQL schema file to an existing Express project", () =
   }
 });
 
+test("upgrades an existing Express project from a changed SQL schema", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+  const sqlPath = join(outputRoot, "schema.sql");
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "school-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--field",
+        "email:string",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--validation",
+        "zod",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    writeFileSync(sqlPath, `CREATE TABLE students (
+  id uuid primary key,
+  name varchar(120) not null,
+  email varchar(180) not null,
+  phone varchar(40),
+  age int
+);
+`, "utf8");
+
+    const projectRoot = join(outputRoot, "school-api");
+    const dryRunOutput = execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "upgrade",
+        "schema",
+        "--from-sql",
+        sqlPath,
+        "--project",
+        projectRoot,
+        "--dry-run"
+      ],
+      { cwd: process.cwd(), stdio: "pipe", encoding: "utf8" }
+    );
+    assert.match(dryRunOutput, /Schema upgrade preview/);
+    assert.match(dryRunOutput, /\+ phone:string\?/);
+    assert.doesNotMatch(readNormalized(join(projectRoot, "src/domain/entities/Student.ts")), /phone/);
+
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "upgrade",
+        "schema",
+        "--from-sql",
+        sqlPath,
+        "--project",
+        projectRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const entity = readNormalized(join(projectRoot, "src/domain/entities/Student.ts"));
+    assert.match(entity, /phone\?: string/);
+    assert.match(entity, /age\?: number/);
+
+    const schema = readNormalized(join(projectRoot, "src/presentation/validation/studentSchemas.ts"));
+    assert.match(schema, /phone: z\.string\(\)\.optional\(\)/);
+    assert.match(schema, /age: z\.number\(\)\.optional\(\)/);
+
+    const createUseCase = readNormalized(join(projectRoot, "src/application/use-cases/createStudentUseCase.ts"));
+    assert.match(createUseCase, /phone: input\.phone/);
+    assert.match(createUseCase, /age: input\.age/);
+
+    const prismaSchema = readNormalized(join(projectRoot, "prisma/schema.prisma"));
+    assert.match(prismaSchema, /phone String\?/);
+    assert.match(prismaSchema, /age Float\?/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
 test("generates full CRUD layers for all backend stacks", () => {
   const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
   const cases = [

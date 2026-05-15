@@ -71,6 +71,26 @@ export function createCli(engine: GeneratorEngine, extender: ProjectExtender, pl
         return;
       }
 
+      if (command === "upgrade") {
+        const [target, ...upgradeArgs] = rest;
+        if (target !== "schema") {
+          throw new Error("Usage: arxgen upgrade schema --from-sql schema.sql [--project <dir>] [--validation zod] [--dry-run]");
+        }
+        const options = parseOptions(upgradeArgs);
+        const sqlPath = requireOption(options, "from-sql");
+        const schema = await parseSqlSchemaFile(sqlPath);
+        const projectRoot = stringOption(options, "project") ?? ".";
+        const result = await extender.upgradeSchema(projectRoot, {
+          entities: schema.entities,
+          validation: parseValidation(options)
+        }, {
+          dryRun: booleanOption(options, "dry-run"),
+          overwrite: booleanOption(options, "force")
+        });
+        logger.info(formatSchemaUpgradeResult(sqlPath, result));
+        return;
+      }
+
       if (command === "add") {
         const [target, name, ...addArgs] = rest;
         if (!target) {
@@ -645,10 +665,36 @@ Commands:
   add entity <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add crud <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add schema --from-sql schema.sql [--project <dir>] [--validation zod] [--force] [--dry-run]
+  upgrade schema --from-sql schema.sql [--project <dir>] [--validation zod] [--dry-run]
   add usecase <name> [--project <dir>] [--force] [--dry-run]
   wizard
   list plugins
   doctor`);
+}
+
+function formatSchemaUpgradeResult(sqlPath: string, result: Awaited<ReturnType<ProjectExtender["upgradeSchema"]>>): string {
+  const action = result.dryRun ? "Schema upgrade preview" : "Schema upgraded";
+  const lines = [
+    `${action} from ${sqlPath}:`,
+    `Project: ${result.projectRoot}`
+  ];
+
+  if (result.changes.length === 0) {
+    lines.push("No schema changes detected.");
+  } else {
+    for (const change of result.changes) {
+      lines.push(`${change.entity}${change.created ? " (created)" : ""}`);
+      for (const field of change.addedFields) {
+        lines.push(`  + ${field.name}:${field.type}${field.required === false ? "?" : ""}`);
+      }
+    }
+  }
+
+  if (result.updatedFiles.length) {
+    lines.push(`Updated files: ${result.updatedFiles.join(", ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 async function promptCreateOptions(): Promise<CliOptions> {

@@ -15,6 +15,17 @@ export interface AddUseCaseRequest {
   name: string;
 }
 
+export interface UpgradeSchemaRequest {
+  entities: EntityConfig[];
+  validation?: ValidationProvider;
+}
+
+export interface SchemaUpgradeChange {
+  entity: string;
+  addedFields: EntityFieldConfig[];
+  created: boolean;
+}
+
 export interface ExtendProjectResult {
   projectRoot: string;
   framework: string;
@@ -22,6 +33,10 @@ export interface ExtendProjectResult {
   filesWritten: number;
   dryRun: boolean;
   updatedFiles: string[];
+}
+
+export interface UpgradeSchemaResult extends ExtendProjectResult {
+  changes: SchemaUpgradeChange[];
 }
 
 interface ProjectDetection {
@@ -102,6 +117,72 @@ export class ProjectExtender {
       filesWritten: files.length,
       dryRun: options.dryRun ?? false,
       updatedFiles: []
+    };
+  }
+
+  async upgradeSchema(projectRoot: string, request: UpgradeSchemaRequest, options: WriteFilesOptions = {}): Promise<UpgradeSchemaResult> {
+    const root = resolve(projectRoot);
+    const detection = await detectProject(root);
+    const updatedFiles = new Set<string>();
+    const changes: SchemaUpgradeChange[] = [];
+    let filesWritten = 0;
+
+    for (const entity of request.entities) {
+      const className = toPascalCase(entity.name);
+      const entityPath = join(root, "src", "domain", "entities", `${className}.ts`);
+
+      if (!(await exists(entityPath))) {
+        const result = await this.addEntity(root, { entity, validation: request.validation, merge: true }, options);
+        filesWritten += result.filesWritten;
+        for (const file of result.updatedFiles) {
+          updatedFiles.add(file);
+        }
+        changes.push({ entity: className, addedFields: entity.fields, created: true });
+        continue;
+      }
+
+      const currentFields = await readTypeScriptEntityFields(entityPath, className);
+      const currentFieldNames = new Set(currentFields.map((field) => toCamelCase(field.name)));
+      const addedFields = entity.fields.filter((field) => !currentFieldNames.has(toCamelCase(field.name)));
+      if (addedFields.length === 0) {
+        continue;
+      }
+
+      if (await patchTypeScriptEntity(entityPath, className, addedFields, Boolean(options.dryRun))) {
+        updatedFiles.add(`src/domain/entities/${className}.ts`);
+      }
+      if (await patchCreateUseCase(root, entity, addedFields, Boolean(options.dryRun))) {
+        updatedFiles.add(`src/application/use-cases/create${className}UseCase.ts`);
+      }
+
+      const validationPath = join(root, "src", "presentation", "validation", `${toCamelCase(entity.name)}Schemas.ts`);
+      if (await exists(validationPath)) {
+        if (await patchValidationSchema(validationPath, className, addedFields, Boolean(options.dryRun))) {
+          updatedFiles.add(`src/presentation/validation/${toCamelCase(entity.name)}Schemas.ts`);
+        }
+      } else if (request.validation) {
+        const mergedEntity: EntityConfig = { ...entity, fields: [...currentFields, ...addedFields] };
+        if (!options.dryRun) {
+          await writeFile(validationPath, validationSchema(toEntityView(mergedEntity), request.validation), "utf8");
+        }
+        updatedFiles.add(`src/presentation/validation/${toCamelCase(entity.name)}Schemas.ts`);
+      }
+
+      if (await patchPrismaModel(root, entity, addedFields, Boolean(options.dryRun))) {
+        updatedFiles.add("prisma/schema.prisma");
+      }
+
+      changes.push({ entity: className, addedFields, created: false });
+    }
+
+    return {
+      projectRoot: root,
+      framework: detection.framework,
+      language: detection.language,
+      filesWritten,
+      dryRun: options.dryRun ?? false,
+      updatedFiles: [...updatedFiles],
+      changes
     };
   }
 }
@@ -223,6 +304,170 @@ ${registrationLine}
   }
   if (!dryRun) {
     await writeFile(containerPath, next, "utf8");
+  }
+  return true;
+}
+
+async function readTypeScriptEntityFields(entityPath: string, className: string): Promise<EntityFieldConfig[]> {
+  const project = new Project({
+    manipulationSettings: {
+      quoteKind: QuoteKind.Double
+    }
+  });
+  const sourceFile = project.addSourceFileAtPath(entityPath);
+  const declaration = sourceFile.getInterface(className);
+  if (!declaration) {
+    return [];
+  }
+
+  return declaration.getProperties()
+    .filter((property) => property.getName() !== "id")
+    .map((property) => ({
+      name: property.getName(),
+      type: fromTypeScriptType(property.getTypeNodeOrThrow().getText()),
+      required: property.hasQuestionToken() ? false : undefined
+    }));
+}
+
+async function patchTypeScriptEntity(entityPath: string, className: string, fields: EntityFieldConfig[], dryRun: boolean): Promise<boolean> {
+  const project = new Project({
+    manipulationSettings: {
+      quoteKind: QuoteKind.Double
+    }
+  });
+  const sourceFile = project.addSourceFileAtPath(entityPath);
+  const declaration = sourceFile.getInterface(className);
+  if (!declaration) {
+    throw new Error(`Unable to find ${className} interface in ${entityPath}`);
+  }
+
+  for (const field of fields) {
+    declaration.addProperty({
+      name: toCamelCase(field.name),
+      hasQuestionToken: field.required === false,
+      type: toTypeScriptType(field.type)
+    });
+  }
+
+  if (!dryRun) {
+    await writeFile(entityPath, sourceFile.getFullText(), "utf8");
+  }
+  return true;
+}
+
+async function patchValidationSchema(schemaPath: string, className: string, fields: EntityFieldConfig[], dryRun: boolean): Promise<boolean> {
+  const current = await readFile(schemaPath, "utf8");
+  let next = current;
+
+  if (current.includes('from "zod"')) {
+    next = patchZodSchema(current, fields);
+  } else if (current.includes('from "joi"')) {
+    next = patchJoiSchema(current, fields);
+  } else if (current.includes("class-validator")) {
+    next = patchClassValidatorSchema(current, className, fields);
+  }
+
+  if (next === current) {
+    return false;
+  }
+
+  if (!dryRun) {
+    await writeFile(schemaPath, next, "utf8");
+  }
+  return true;
+}
+
+async function patchCreateUseCase(root: string, entity: EntityConfig, fields: EntityFieldConfig[], dryRun: boolean): Promise<boolean> {
+  const className = toPascalCase(entity.name);
+  const useCasePath = join(root, "src", "application", "use-cases", `create${className}UseCase.ts`);
+  if (!(await exists(useCasePath))) {
+    return false;
+  }
+
+  const current = await readFile(useCasePath, "utf8");
+  const missingFields = fields.filter((field) => !current.includes(`${toCamelCase(field.name)}: input.${toCamelCase(field.name)}`));
+  if (missingFields.length === 0) {
+    return false;
+  }
+
+  const lines = missingFields.map((field) => `      ${toCamelCase(field.name)}: input.${toCamelCase(field.name)}`);
+  const next = current.replace(/(\n\s+)([a-zA-Z0-9_]+: input\.[a-zA-Z0-9_]+)(\n\s+\}\);)/, (_match, indent: string, lastFieldLine: string, close: string) => {
+    return `${indent}${lastFieldLine},\n${lines.join(",\n")}${close}`;
+  });
+
+  if (next === current) {
+    const fallback = current.replace(/(\n\s+\}\);)/, `\n${lines.join(",\n")}$1`);
+    if (fallback === current) {
+      return false;
+    }
+    if (!dryRun) {
+      await writeFile(useCasePath, fallback, "utf8");
+    }
+    return true;
+  }
+
+  if (!dryRun) {
+    await writeFile(useCasePath, next, "utf8");
+  }
+  return true;
+}
+
+function patchZodSchema(content: string, fields: EntityFieldConfig[]): string {
+  const insert = fields.map((field) => `  ${toCamelCase(field.name)}: ${zodType(field)}${field.required === false ? ".optional()" : ""},`).join("\n");
+  if (!insert) {
+    return content;
+  }
+  const prefix = /z\.object\(\{\s*\n\}\);/.test(content) ? "" : ",";
+  return content.replace(/(\n\}\);\n\nexport const update)/, `${prefix}\n${insert}$1`);
+}
+
+function patchJoiSchema(content: string, fields: EntityFieldConfig[]): string {
+  const insert = fields.map((field) => `  ${toCamelCase(field.name)}: ${joiType(field)}${field.required === false ? "" : ".required()"},`).join("\n");
+  if (!insert) {
+    return content;
+  }
+  const prefix = /Joi\.object\(\{\s*\n\}\);/.test(content) ? "" : ",";
+  return content.replace(/(\n\}\);\n\nexport const update)/, `${prefix}\n${insert}$1`);
+}
+
+function patchClassValidatorSchema(content: string, className: string, fields: EntityFieldConfig[]): string {
+  const insert = fields.map((field) => `  ${field.required === false ? "@IsOptional()\n  " : ""}${classValidatorDecorator(field.type)}
+  ${toCamelCase(field.name)}!: ${toTypeScriptType(field.type)};`).join("\n\n");
+  if (!insert) {
+    return content;
+  }
+  return content.replace(new RegExp(`(export class Create${className}Dto \\{[\\s\\S]*?)(\\n\\})`), `$1\n\n${insert}$2`);
+}
+
+async function patchPrismaModel(root: string, entity: EntityConfig, fields: EntityFieldConfig[], dryRun: boolean): Promise<boolean> {
+  const schemaPath = join(root, "prisma", "schema.prisma");
+  if (!(await exists(schemaPath))) {
+    return false;
+  }
+
+  const className = toPascalCase(entity.name);
+  const current = await readFile(schemaPath, "utf8");
+  if (!new RegExp(`model\\s+${className}\\b`).test(current)) {
+    return updatePrismaSchema(root, entity, dryRun);
+  }
+
+  const modelMatch = new RegExp(`model\\s+${className}\\s+\\{[\\s\\S]*?\\n\\}`, "m").exec(current);
+  if (!modelMatch) {
+    return false;
+  }
+
+  const model = modelMatch[0];
+  const insertLines = fields
+    .filter((field) => !new RegExp(`\\n\\s+${toCamelCase(field.name)}\\s+`).test(model))
+    .map((field) => `  ${toCamelCase(field.name)} ${toPrismaType(field)}`);
+  if (insertLines.length === 0) {
+    return false;
+  }
+
+  const nextModel = model.replace(/\n\}$/, `\n${insertLines.join("\n")}\n}`);
+  const next = current.replace(model, nextModel);
+  if (!dryRun) {
+    await writeFile(schemaPath, next, "utf8");
   }
   return true;
 }
@@ -614,6 +859,13 @@ function toTypeScriptType(type: FieldType): string {
   if (type === "number") return "number";
   if (type === "boolean") return "boolean";
   if (type === "date") return "Date";
+  return "string";
+}
+
+function fromTypeScriptType(type: string): FieldType {
+  if (type === "number") return "number";
+  if (type === "boolean") return "boolean";
+  if (type === "Date") return "date";
   return "string";
 }
 
