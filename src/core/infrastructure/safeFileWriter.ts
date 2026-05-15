@@ -6,7 +6,7 @@ import { FileWriter, WriteFilesOptions } from "../application/ports/fileWriter.j
 export class SafeFileWriter implements FileWriter {
   async writeFiles(outputRoot: string, files: GeneratedFile[], options: WriteFilesOptions = {}): Promise<void> {
     const root = resolve(outputRoot);
-    if (!options.dryRun) {
+    if (!options.dryRun && !(await exists(root))) {
       await mkdir(root, { recursive: true });
     }
 

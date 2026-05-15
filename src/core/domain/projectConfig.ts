@@ -13,6 +13,16 @@ export interface EntityConfig {
   fields: EntityFieldConfig[];
 }
 
+export interface StackConfig {
+  language: string;
+  framework: string;
+}
+
+export interface FullstackConfig {
+  frontend: StackConfig;
+  backend: StackConfig;
+}
+
 export interface ProjectConfig {
   projectName: string;
   language: string;
@@ -24,5 +34,9 @@ export interface ProjectConfig {
   database?: string;
   orm?: string;
   auth?: string;
+  docker?: boolean;
+  nginx?: boolean;
+  redis?: boolean;
+  fullstack?: FullstackConfig;
   entities?: EntityConfig[];
 }

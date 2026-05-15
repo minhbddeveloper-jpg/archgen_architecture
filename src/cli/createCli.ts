@@ -70,7 +70,7 @@ function parseOptions(args: string[]): CliOptions {
     }
 
     const key = token.slice(2);
-    if (key === "force" || key === "dry-run") {
+    if (key === "force" || key === "dry-run" || key === "docker" || key === "nginx" || key === "redis") {
       options[key] = true;
       continue;
     }
@@ -112,6 +112,7 @@ async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjec
   const fileConfig = configPath ? await readConfigFile(configPath) : {};
   const merged = { ...fileConfig, ...removeCliOnlyOptions(options) };
   const architecture = merged.architecture ?? "clean";
+  const fullstack = parseFullstack(options, fileConfig);
 
   if (architecture !== "clean" && architecture !== "hexagonal" && architecture !== "mvc") {
     throw new Error("architecture must be one of: clean, hexagonal, mvc");
@@ -120,8 +121,8 @@ async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjec
   return {
     config: {
       projectName: requireOption(merged, "name"),
-      language: requireOption(merged, "language"),
-      framework: requireOption(merged, "framework"),
+      language: fullstack ? "fullstack" : requireOption(merged, "language"),
+      framework: fullstack ? "fullstack" : requireOption(merged, "framework"),
       architecture,
       languageVersion: optionalString(merged, "languageVersion"),
       frameworkVersion: optionalString(merged, "frameworkVersion"),
@@ -129,6 +130,10 @@ async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjec
       database: optionalString(merged, "database"),
       orm: optionalString(merged, "orm"),
       auth: optionalString(merged, "auth"),
+      docker: optionalBoolean(merged, "docker") ?? booleanOption(options, "docker"),
+      nginx: optionalBoolean(merged, "nginx") ?? booleanOption(options, "nginx"),
+      redis: optionalBoolean(merged, "redis") ?? booleanOption(options, "redis"),
+      fullstack,
       entities: parseCliEntities(options) ?? validateEntities(merged.entities)
     },
     outputRoot: stringOption(options, "out") ?? optionalString(fileConfig, "out") ?? optionalString(fileConfig, "outputDir") ?? "."
@@ -147,7 +152,7 @@ async function readConfigFile(path: string): Promise<Record<string, unknown>> {
 }
 
 function removeCliOnlyOptions(options: CliOptions): Record<string, CliValue> {
-  const { config: _config, out: _out, force: _force, "dry-run": _dryRun, entity: _entity, field: _field, ...projectOptions } = options;
+  const { config: _config, out: _out, force: _force, "dry-run": _dryRun, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
   return projectOptions;
 }
 
@@ -213,6 +218,71 @@ function optionalString(options: Record<string, unknown>, key: string): string |
   }
 
   return value;
+}
+
+function optionalBoolean(options: Record<string, unknown>, key: string): boolean | undefined {
+  const value = options[key];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "boolean") {
+    throw new Error(`${key} must be a boolean`);
+  }
+
+  return value;
+}
+
+function parseFullstack(options: CliOptions, fileConfig: Record<string, unknown>): ProjectConfig["fullstack"] {
+  const cliFrontend = stringOption(options, "frontend");
+  const cliBackend = stringOption(options, "backend");
+  if (cliFrontend || cliBackend) {
+    if (!cliFrontend || !cliBackend) {
+      throw new Error("--frontend and --backend must be used together");
+    }
+    return {
+      frontend: stackFromAlias(cliFrontend, "frontend"),
+      backend: stackFromAlias(cliBackend, "backend")
+    };
+  }
+
+  const value = fileConfig.fullstack;
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value) || !isRecord(value.frontend) || !isRecord(value.backend)) {
+    throw new Error("fullstack must contain frontend and backend objects");
+  }
+  return {
+    frontend: {
+      language: requireOption(value.frontend, "language"),
+      framework: requireOption(value.frontend, "framework")
+    },
+    backend: {
+      language: requireOption(value.backend, "language"),
+      framework: requireOption(value.backend, "framework")
+    }
+  };
+}
+
+function stackFromAlias(value: string, kind: "frontend" | "backend"): { language: string; framework: string } {
+  const aliases: Record<string, { language: string; framework: string }> = {
+    react: { language: "typescript", framework: "react" },
+    express: { language: "typescript", framework: "express" },
+    fastapi: { language: "python", framework: "fastapi" },
+    django: { language: "python", framework: "django" },
+    spring: { language: "java", framework: "spring" },
+    aspnetcore: { language: "csharp", framework: "aspnetcore" },
+    laravel: { language: "php", framework: "laravel" },
+    gin: { language: "go", framework: "gin" },
+    rails: { language: "ruby", framework: "rails" },
+    ktor: { language: "kotlin", framework: "ktor" }
+  };
+  const stack = aliases[value.toLowerCase()];
+  if (!stack) {
+    throw new Error(`Unknown ${kind} stack: ${value}`);
+  }
+  return stack;
 }
 
 function validateStringRecord(value: unknown, key: string): Record<string, string> | undefined {
@@ -357,7 +427,8 @@ function printHelp(logger: Logger): void {
   logger.info(`archgen
 
 Commands:
-  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --frontend react --backend express [--database postgres] [--redis] [--docker] [--nginx] [--out <dir>]
   list plugins
   doctor`);
 }

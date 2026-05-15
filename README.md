@@ -112,6 +112,53 @@ npm start -- create \
   --out ./generated
 ```
 
+Generate backend infrastructure setup:
+
+```bash
+npm start -- create \
+  --name api-test \
+  --language typescript \
+  --framework express \
+  --entity student \
+  --field name:string \
+  --database postgres \
+  --redis \
+  --docker \
+  --nginx \
+  --out ./generated
+```
+
+Generate ORM models/repositories/migrations:
+
+```bash
+npm start -- create \
+  --name student-api \
+  --language typescript \
+  --framework express \
+  --entity student \
+  --field name:string \
+  --field email:string \
+  --database postgres \
+  --orm prisma \
+  --out ./generated
+```
+
+Generate a fullstack project with frontend, backend, Docker, Nginx, Redis, and database services:
+
+```bash
+npm start -- create \
+  --name full-test \
+  --frontend react \
+  --backend express \
+  --entity student \
+  --field name:string \
+  --database postgres \
+  --redis \
+  --docker \
+  --nginx \
+  --out ./generated
+```
+
 Generate a React project:
 
 ```bash
@@ -168,6 +215,13 @@ Output directory rules:
 | `--architecture <style>` | No | Architecture style. Defaults to `clean`. Supported: `clean`, `hexagonal`, `mvc`. |
 | `--entity <name>` | No | Adds a CRUD entity. Can be repeated. |
 | `--field <spec>` | No | Adds a field to an entity. Can be repeated. |
+| `--frontend <stack>` | No | Creates a fullstack project frontend. Current alias: `react`. |
+| `--backend <stack>` | No | Creates a fullstack project backend. Supported aliases include `express`, `fastapi`, `django`, `spring`, `aspnetcore`, `laravel`, `gin`, `rails`, `ktor`. |
+| `--database <type>` | No | Adds database service setup. Common values: `postgres`, `mysql`, `mongodb`. |
+| `--orm <orm>` | No | Generates ORM artifacts when supported by the selected stack. |
+| `--redis` | No | Adds Redis service setup and `REDIS_URL`. |
+| `--docker` | No | Adds Dockerfile and Docker Compose setup. |
+| `--nginx` | No | Adds Nginx reverse proxy config. |
 | `--languageVersion <version>` | No | Overrides the language/runtime/compiler version used by templates. |
 | `--frameworkVersion <version>` | No | Overrides the primary framework version used by templates. |
 | `--config <file>` | No | Reads project settings from a JSON config file. |
@@ -246,6 +300,17 @@ Version fields:
 | `frameworkVersion` | Main framework version, such as React, Express, FastAPI, Django, Spring Boot, ASP.NET Core, Laravel, Gin, Rails, or Ktor |
 | `packageVersions` | Optional dependency overrides used by templates, such as `viteVersion`, `uvicornVersion`, `nodeTypesVersion`, or `pumaVersion` |
 
+Setup fields:
+
+| Field | Meaning |
+| --- | --- |
+| `database` | Adds a database service and `DATABASE_URL`. Supported setup values: `postgres`, `mysql`, `mongodb`. |
+| `orm` | Generates ORM models/repositories/migrations when supported. |
+| `redis` | Adds Redis service and `REDIS_URL`. |
+| `docker` | Adds Dockerfile and `docker-compose.yml`. |
+| `nginx` | Adds `nginx/default.conf` and Nginx service in Docker Compose. |
+| `fullstack` | Generates a frontend and backend together under one root project. |
+
 Example with dependency overrides:
 
 ```json
@@ -293,6 +358,47 @@ React app with explicit versions:
 
 ```bash
 npm start -- create --name web-app --language typescript --framework react --languageVersion 5.4.2 --frameworkVersion 18.2.0 --out ./generated
+```
+
+Fullstack React + Express with Postgres, Redis, Docker, and Nginx:
+
+```bash
+npm start -- create --name full-test --frontend react --backend express --entity student --field name:string --database postgres --redis --docker --nginx --out ./generated
+```
+
+Generated setup files include:
+
+```text
+full-test/
+  .env.example
+  docker-compose.yml
+  nginx/
+    default.conf
+  web/
+    Dockerfile
+  api/
+    Dockerfile
+```
+
+The generated Docker Compose setup provides service wiring and environment variables. Database/Redis application code integration is intentionally left to framework-specific ORM templates such as Prisma, SQLAlchemy, Spring Data JPA, EF Core, Eloquent, or GORM.
+
+## ORM Support
+
+| Language | Framework | ORM value | Generated artifacts |
+| --- | --- | --- | --- |
+| TypeScript | Express | `prisma` | `prisma/schema.prisma` |
+| Python | FastAPI | `sqlalchemy` | SQLAlchemy base/session and model files |
+| C# | ASP.NET Core | `efcore` | EF Core `AppDbContext` |
+| Java | Spring Boot | `jpa` | Spring Data JPA repository interfaces |
+| Go | Gin | `gorm` | GORM database helper and model files |
+| PHP | Laravel | `eloquent` | Eloquent models and migration files |
+
+Example commands:
+
+```bash
+npm start -- create --name api --language python --framework fastapi --entity student --field name:string --database postgres --orm sqlalchemy --out ./generated
+npm start -- create --name api --language csharp --framework aspnetcore --entity student --field name:string --database postgres --orm efcore --out ./generated
+npm start -- create --name api --language go --framework gin --entity student --field name:string --database postgres --orm gorm --out ./generated
 ```
 
 ## Visual Example

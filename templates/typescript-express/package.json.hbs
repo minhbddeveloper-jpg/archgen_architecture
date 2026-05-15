@@ -9,12 +9,14 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "express": "^{{frameworkVersion}}"
+    "express": "^{{frameworkVersion}}"{{#if orm}},
+    "@prisma/client": "^5.20.0"{{/if}}
   },
   "devDependencies": {
     "@types/express": "^{{expressTypesVersion}}",
     "@types/node": "^{{nodeTypesVersion}}",
     "tsx": "^{{tsxVersion}}",
-    "typescript": "^{{languageVersion}}"
+    "typescript": "^{{languageVersion}}"{{#if orm}},
+    "prisma": "^5.20.0"{{/if}}
   }
 }

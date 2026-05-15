@@ -4,4 +4,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+{{#if orm}}
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="{{frameworkVersion}}.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="{{frameworkVersion}}.*" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="{{frameworkVersion}}.*" />
+  </ItemGroup>
+{{/if}}
 </Project>
