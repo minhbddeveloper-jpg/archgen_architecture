@@ -4,7 +4,8 @@
   "description": "Multi-language Clean Architecture project generator.",
   "type": "module",
   "bin": {
-    "archgen": "./dist/bin/archgen.js"
+    "archgen": "dist/bin/archgen.js",
+    "arxgen": "dist/bin/archgen.js"
   },
   "scripts": {
     "build": "tsc",
