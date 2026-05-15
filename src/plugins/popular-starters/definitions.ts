@@ -47,6 +47,25 @@ export const starterDefinitions: StarterDefinition[] = [
     crudStyle: "typescript-express"
   },
   {
+    name: "typescript-nestjs",
+    language: "typescript",
+    framework: "nestjs",
+    templateDir: "typescript-nestjs",
+    files: [
+      { template: "package.json.hbs", output: "{{projectSlug}}/package.json" },
+      { template: "tsconfig.json.hbs", output: "{{projectSlug}}/tsconfig.json" },
+      { template: "src/main.ts.hbs", output: "{{projectSlug}}/src/main.ts" },
+      { template: "src/app.module.ts.hbs", output: "{{projectSlug}}/src/app.module.ts" },
+      { template: "README.md.hbs", output: "{{projectSlug}}/README.md" }
+    ],
+    keepDirs: [
+      "{{projectSlug}}/src/modules",
+      "{{projectSlug}}/src/shared/config",
+      "{{projectSlug}}/src/shared/auth"
+    ],
+    crudStyle: "typescript-nestjs"
+  },
+  {
     name: "python-fastapi",
     language: "python",
     framework: "fastapi",

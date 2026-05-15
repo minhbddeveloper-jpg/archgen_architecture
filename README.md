@@ -13,7 +13,7 @@ CRUD generation currently uses in-memory repositories. This provides a practical
 
 For the recommended architecture of each plugin, see [Standard Architecture Design](docs/standard-architecture-design.md).
 
-For planned upgrades such as `archgen add entity`, DTO generation, validation, auth, relations, NestJS support, and the interactive wizard, see [Upgrade Roadmap](docs/upgrade-roadmap.md).
+For the long-term direction, see [Upgrade Roadmap](docs/upgrade-roadmap.md).
 
 ## Supported Platforms
 
@@ -21,6 +21,7 @@ For planned upgrades such as `archgen add entity`, DTO generation, validation, a
 | --- | --- | --- | --- |
 | TypeScript | React | `typescript-react` | Frontend app with Vite |
 | TypeScript | Express | `typescript-express` | Backend API with CRUD routes |
+| TypeScript | NestJS | `typescript-nestjs` | NestJS API with module, Swagger, validation pipe, and Clean Architecture folders |
 | Python | FastAPI | `python-fastapi` | Backend API with CRUD routes |
 | Python | Django | `python-django` | Django starter |
 | Java | Spring Boot | `java-spring` | Backend API with CRUD controllers |
@@ -36,6 +37,13 @@ Requirements:
 
 - Node.js `>=20`
 - npm
+
+Install from npm:
+
+```bash
+npm install -g arxgen
+arxgen doctor
+```
 
 Install dependencies:
 
@@ -78,6 +86,52 @@ npm start -- create \
   --field student.email:string \
   --field student.age:number? \
   --out ./generated
+```
+
+Generate a production-oriented TypeScript Express API with DTOs, validation, pagination helpers, JWT auth, Prisma, and relations:
+
+```bash
+npm start -- create \
+  --name course-api \
+  --language typescript \
+  --framework express \
+  --entity student \
+  --entity course \
+  --field student.name:string \
+  --field course.title:string \
+  --database postgres \
+  --orm prisma \
+  --relation course.student:many-to-one \
+  --validation zod \
+  --auth jwt \
+  --out ./generated
+```
+
+Generate a NestJS API:
+
+```bash
+npm start -- create \
+  --name nest-school \
+  --language typescript \
+  --framework nestjs \
+  --entity student \
+  --field name:string \
+  --out ./generated
+```
+
+Extend an existing generated TypeScript Express project:
+
+```bash
+cd generated/student-api
+arxgen add entity course --field title:string --field credits:number --merge
+arxgen add crud teacher --field name:string --field email:string --validation zod --merge
+arxgen add usecase CreateEnrollment
+```
+
+Use the interactive wizard:
+
+```bash
+arxgen wizard
 ```
 
 When only one entity is declared, fields can omit the entity prefix:
@@ -221,6 +275,9 @@ Output directory rules:
 | `--backend <stack>` | No | Creates a fullstack project backend. Supported aliases include `express`, `fastapi`, `django`, `spring`, `aspnetcore`, `laravel`, `gin`, `rails`, `ktor`. |
 | `--database <type>` | No | Adds database service setup. Common values: `postgres`, `mysql`, `mongodb`. |
 | `--orm <orm>` | No | Generates ORM artifacts when supported by the selected stack. |
+| `--validation <provider>` | No | Generates validation artifacts for supported stacks. Values: `zod`, `class-validator`, `joi`. |
+| `--auth <provider>` | No | Generates auth artifacts where supported. Current value: `jwt` for TypeScript Express. |
+| `--relation <spec>` | No | Adds ORM relation metadata. Current Prisma example: `course.student:many-to-one`. Can be repeated. |
 | `--redis` | No | Adds Redis service setup and `REDIS_URL`. |
 | `--docker` | No | Adds Dockerfile and Docker Compose setup. |
 | `--nginx` | No | Adds Nginx reverse proxy config. |
@@ -230,6 +287,25 @@ Output directory rules:
 | `--out <dir>` | No | Output directory. Overrides `out` or `outputDir` from config. |
 | `--dry-run` | No | Validates and reports generated file count without writing files. |
 | `--force` | No | Allows overwriting existing files. |
+
+## Add Commands
+
+`add` commands extend an existing generated project. The current implementation supports TypeScript Express projects.
+
+```bash
+arxgen add entity student --field name:string --field email:string --merge
+arxgen add crud course --field title:string --validation zod --merge
+arxgen add usecase CreateEnrollment
+```
+
+Useful flags:
+
+| Option | Description |
+| --- | --- |
+| `--project <dir>` | Existing project root. Defaults to the current directory. |
+| `--merge` | Updates integration points such as `src/main.ts` route registration. |
+| `--force` | Allows overwriting generated files. |
+| `--dry-run` | Reports what would be generated without writing files. |
 
 Field syntax:
 

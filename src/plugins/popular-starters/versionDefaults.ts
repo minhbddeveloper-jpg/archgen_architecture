@@ -15,6 +15,13 @@ export const defaultVersions: Record<string, Record<string, string>> = {
     nodeTypesVersion: "20.11.30",
     tsxVersion: "4.7.1"
   },
+  "typescript-nestjs": {
+    languageVersion: "5.4.2",
+    frameworkVersion: "10.3.0",
+    nodeTypesVersion: "20.11.30",
+    reflectMetadataVersion: "0.2.1",
+    rxjsVersion: "7.8.1"
+  },
   "python-fastapi": {
     languageVersion: "3.11",
     frameworkVersion: "0.110.0",

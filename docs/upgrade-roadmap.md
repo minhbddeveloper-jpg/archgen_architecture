@@ -2,6 +2,14 @@
 
 This roadmap defines the next major upgrades for ArchGen. The main direction is to evolve ArchGen from a project starter generator into an architecture evolution tool that can safely extend existing projects.
 
+Current implementation status:
+
+- `archgen add entity`, `archgen add crud`, and `archgen add usecase` are available for generated TypeScript Express projects.
+- TypeScript Express generation supports DTO artifacts, validation schema artifacts, JWT auth scaffolding, pagination DTOs, standard API response helpers, and Prisma relation metadata.
+- NestJS starter generation is available with module, controller, service, provider, Swagger, config, and validation pipe scaffolding.
+- `archgen wizard` provides a basic interactive terminal flow.
+- Multi-framework AST merge support, full RBAC, refresh token persistence, and advanced relation types remain future work.
+
 ## 1. Add Commands for Existing Projects
 
 Priority: Very high

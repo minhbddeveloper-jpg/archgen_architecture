@@ -1,4 +1,7 @@
 import express from "express";
+{{#if auth}}
+import { createAuthRouter } from "./presentation/routes/authRoutes.js";
+{{/if}}
 {{#each entities}}
 import { create{{className}}Router } from "./presentation/routes/{{camelName}}Routes.js";
 {{/each}}
@@ -12,6 +15,9 @@ app.get("/health", (_request, response) => {
   response.json({ status: "ok", service: "{{projectSlug}}" });
 });
 
+{{#if auth}}
+app.use("/auth", createAuthRouter());
+{{/if}}
 {{#each entities}}
 app.use("/{{routeName}}", create{{className}}Router());
 {{/each}}

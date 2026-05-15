@@ -100,3 +100,151 @@ test("generates setup and ORM artifacts when requested", () => {
     rmSync(outputRoot, { recursive: true, force: true });
   }
 });
+
+test("adds a new TypeScript Express entity to an existing project and merges routes", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/archgen.js",
+        "create",
+        "--name",
+        "school-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "school-api");
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/archgen.js"),
+        "add",
+        "entity",
+        "student",
+        "--field",
+        "name:string",
+        "--field",
+        "email:string",
+        "--project",
+        projectRoot,
+        "--validation",
+        "zod",
+        "--merge"
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    assert.equal(existsSync(join(projectRoot, "src/domain/entities/Student.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/application/dtos/studentDto.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/validation/studentSchemas.ts")), true);
+
+    const main = readFileSync(join(projectRoot, "src/main.ts"), "utf8");
+    assert.match(main, /createStudentRouter/);
+    assert.match(main, /app\.use\("\/students", createStudentRouter\(\)\)/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("generates auth, validation, pagination, and relation support for TypeScript Express", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/archgen.js",
+        "create",
+        "--name",
+        "course-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--entity",
+        "student",
+        "--entity",
+        "course",
+        "--field",
+        "student.name:string",
+        "--field",
+        "course.title:string",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--relation",
+        "course.student:many-to-one",
+        "--validation",
+        "zod",
+        "--auth",
+        "jwt",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "course-api");
+    assert.equal(existsSync(join(projectRoot, "src/presentation/routes/authRoutes.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/middleware/authMiddleware.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/application/dtos/studentDto.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/validation/studentSchemas.ts")), true);
+
+    const schema = readFileSync(join(projectRoot, "prisma/schema.prisma"), "utf8");
+    assert.match(schema, /studentId String/);
+    assert.match(schema, /student Student @relation/);
+
+    const main = readFileSync(join(projectRoot, "src/main.ts"), "utf8");
+    assert.match(main, /app\.use\("\/auth", createAuthRouter\(\)\)/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("generates NestJS clean architecture module output", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/archgen.js",
+        "create",
+        "--name",
+        "nest-school",
+        "--language",
+        "typescript",
+        "--framework",
+        "nestjs",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "nest-school");
+    assert.equal(existsSync(join(projectRoot, "src/modules/students/students.module.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/modules/students/presentation/students.controller.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/modules/students/application/ports/studentRepository.ts")), true);
+
+    const main = readFileSync(join(projectRoot, "src/main.ts"), "utf8");
+    assert.match(main, /SwaggerModule/);
+    assert.match(main, /ValidationPipe/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});

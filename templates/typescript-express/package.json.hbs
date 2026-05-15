@@ -10,9 +10,17 @@
   },
   "dependencies": {
     "express": "^{{frameworkVersion}}"{{#if orm}},
-    "@prisma/client": "^5.20.0"{{/if}}
+    "@prisma/client": "^5.20.0"{{/if}}{{#if auth}},
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"{{/if}}{{#if validation}},
+    "class-validator": "^0.14.1",
+    "joi": "^17.13.3",
+    "zod": "^3.23.8"{{/if}}
   },
   "devDependencies": {
+    {{#if auth}}"@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
+    {{/if}}
     "@types/express": "^{{expressTypesVersion}}",
     "@types/node": "^{{nodeTypesVersion}}",
     "tsx": "^{{tsxVersion}}",

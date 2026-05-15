@@ -167,6 +167,8 @@ function generateCrudFiles(definition: StarterDefinition, context: Record<string
     switch (definition.crudStyle) {
       case "typescript-express":
         return typescriptExpressCrudFiles(context, view);
+      case "typescript-nestjs":
+        return typescriptNestJsCrudFiles(context, view);
       case "python-fastapi":
         return pythonFastApiCrudFiles(context, view);
       case "python-django":
@@ -499,6 +501,183 @@ export function create${entity.className}Router(repository = new ${entity.classN
 `
     }
   ];
+}
+
+function typescriptNestJsCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {
+  const root = contextString(context, "projectSlug");
+  const fields = entity.fields.map((field) => `  ${field.camelName}: ${field.tsType};`).join("\n");
+  const dtoFields = entity.fields.map((field) => `  ${field.required ? "" : "@IsOptional()\n  "}${nestjsValidator(field.type)}\n  ${field.camelName}!: ${field.tsType};`).join("\n\n");
+  const moduleRoot = `${root}/src/modules/${entity.routeName}`;
+
+  return [
+    {
+      path: `${moduleRoot}/domain/${entity.className}.ts`,
+      content: `export interface ${entity.className} {
+  id: string;
+${fields}
+}
+`
+    },
+    {
+      path: `${moduleRoot}/application/ports/${entity.camelName}Repository.ts`,
+      content: `import { ${entity.className} } from "../../domain/${entity.className}";
+
+export const ${entity.className.toUpperCase()}_REPOSITORY = Symbol("${entity.className}Repository");
+
+export interface ${entity.className}Repository {
+  findAll(): ${entity.className}[];
+  findById(id: string): ${entity.className} | undefined;
+  save(record: ${entity.className}): ${entity.className};
+  delete(id: string): boolean;
+}
+`
+    },
+    {
+      path: `${moduleRoot}/application/dto/${entity.camelName}.dto.ts`,
+      content: `import { IsBoolean, IsNumber, IsOptional, IsString } from "class-validator";
+import { ApiProperty, PartialType } from "@nestjs/swagger";
+
+export class Create${entity.className}Dto {
+${dtoFields || "  @ApiProperty()\n  name!: string;"}
+}
+
+export class Update${entity.className}Dto extends PartialType(Create${entity.className}Dto) {}
+`
+    },
+    {
+      path: `${moduleRoot}/application/${entity.camelName}.service.ts`,
+      content: `import { Inject, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { ${entity.className} } from "../domain/${entity.className}";
+import { Create${entity.className}Dto, Update${entity.className}Dto } from "./dto/${entity.camelName}.dto";
+import { ${entity.className}Repository, ${entity.className.toUpperCase()}_REPOSITORY } from "./ports/${entity.camelName}Repository";
+
+@Injectable()
+export class ${entity.className}Service {
+  constructor(@Inject(${entity.className.toUpperCase()}_REPOSITORY) private readonly repository: ${entity.className}Repository) {}
+
+  findAll(): ${entity.className}[] {
+    return this.repository.findAll();
+  }
+
+  findById(id: string): ${entity.className} | undefined {
+    return this.repository.findById(id);
+  }
+
+  create(input: Create${entity.className}Dto): ${entity.className} {
+    return this.repository.save({ id: randomUUID(), ...input });
+  }
+
+  update(id: string, input: Update${entity.className}Dto): ${entity.className} | undefined {
+    const current = this.repository.findById(id);
+    return current ? this.repository.save({ ...current, ...input, id }) : undefined;
+  }
+
+  delete(id: string): boolean {
+    return this.repository.delete(id);
+  }
+}
+`
+    },
+    {
+      path: `${moduleRoot}/infrastructure/${entity.camelName}.memoryRepository.ts`,
+      content: `import { ${entity.className}Repository } from "../application/ports/${entity.camelName}Repository";
+import { ${entity.className} } from "../domain/${entity.className}";
+
+export class ${entity.className}MemoryRepository implements ${entity.className}Repository {
+  private readonly records = new Map<string, ${entity.className}>();
+
+  findAll(): ${entity.className}[] {
+    return [...this.records.values()];
+  }
+
+  findById(id: string): ${entity.className} | undefined {
+    return this.records.get(id);
+  }
+
+  save(record: ${entity.className}): ${entity.className} {
+    this.records.set(record.id, record);
+    return record;
+  }
+
+  delete(id: string): boolean {
+    return this.records.delete(id);
+  }
+}
+`
+    },
+    {
+      path: `${moduleRoot}/presentation/${entity.routeName}.controller.ts`,
+      content: `import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from "@nestjs/common";
+import { ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ${entity.className}Service } from "../application/${entity.camelName}.service";
+import { Create${entity.className}Dto, Update${entity.className}Dto } from "../application/dto/${entity.camelName}.dto";
+
+@ApiTags("${entity.routeName}")
+@Controller("${entity.routeName}")
+export class ${entity.className}Controller {
+  constructor(private readonly service: ${entity.className}Service) {}
+
+  @Get()
+  @ApiResponse({ status: 200 })
+  findAll() {
+    return this.service.findAll();
+  }
+
+  @Get(":id")
+  findById(@Param("id") id: string) {
+    const record = this.service.findById(id);
+    if (!record) throw new NotFoundException();
+    return record;
+  }
+
+  @Post()
+  create(@Body() input: Create${entity.className}Dto) {
+    return this.service.create(input);
+  }
+
+  @Put(":id")
+  update(@Param("id") id: string, @Body() input: Update${entity.className}Dto) {
+    const record = this.service.update(id, input);
+    if (!record) throw new NotFoundException();
+    return record;
+  }
+
+  @Delete(":id")
+  delete(@Param("id") id: string) {
+    if (!this.service.delete(id)) throw new NotFoundException();
+  }
+}
+`
+    },
+    {
+      path: `${moduleRoot}/${entity.routeName}.module.ts`,
+      content: `import { Module } from "@nestjs/common";
+import { ${entity.className}Service } from "./application/${entity.camelName}.service";
+import { ${entity.className.toUpperCase()}_REPOSITORY } from "./application/ports/${entity.camelName}Repository";
+import { ${entity.className}MemoryRepository } from "./infrastructure/${entity.camelName}.memoryRepository";
+import { ${entity.className}Controller } from "./presentation/${entity.routeName}.controller";
+
+@Module({
+  controllers: [${entity.className}Controller],
+  providers: [
+    ${entity.className}Service,
+    {
+      provide: ${entity.className.toUpperCase()}_REPOSITORY,
+      useClass: ${entity.className}MemoryRepository
+    }
+  ]
+})
+export class ${entity.className}Module {}
+`
+    }
+  ];
+}
+
+function nestjsValidator(type: FieldType): string {
+  if (type === "number") return "@IsNumber()";
+  if (type === "boolean") return "@IsBoolean()";
+  return "@IsString()";
 }
 
 function pythonFastApiCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {

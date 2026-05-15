@@ -15,6 +15,7 @@ export interface StarterDefinition {
 
 export type CrudStyle =
   | "typescript-express"
+  | "typescript-nestjs"
   | "python-fastapi"
   | "python-django"
   | "java-spring"

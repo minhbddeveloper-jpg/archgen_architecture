@@ -1,0 +1,13 @@
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+{{#each entities}}
+import { {{className}}Module } from "./modules/{{routeName}}/{{routeName}}.module";
+{{/each}}
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }){{#each entities}},
+    {{className}}Module{{/each}}
+  ]
+})
+export class AppModule {}

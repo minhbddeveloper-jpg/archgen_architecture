@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
 import { GeneratorEngine } from "../core/application/generatorEngine.js";
-import { EntityConfig, EntityFieldConfig, FieldType, ProjectConfig } from "../core/domain/projectConfig.js";
+import { ProjectExtender } from "../core/application/projectExtender.js";
+import { EntityConfig, EntityFieldConfig, FieldType, ProjectConfig, RelationConfig, RelationKind, ValidationProvider } from "../core/domain/projectConfig.js";
 import { Plugin } from "../core/domain/plugin.js";
 import { Logger } from "../shared/logger.js";
 
@@ -17,7 +19,7 @@ interface CreateProjectRequest {
   outputRoot: string;
 }
 
-export function createCli(engine: GeneratorEngine, plugins: Plugin[], logger: Logger): Cli {
+export function createCli(engine: GeneratorEngine, extender: ProjectExtender, plugins: Plugin[], logger: Logger): Cli {
   return {
     async run(args: string[]): Promise<void> {
       const [command, ...rest] = args;
@@ -29,6 +31,18 @@ export function createCli(engine: GeneratorEngine, plugins: Plugin[], logger: Lo
 
       if (command === "create") {
         const options = parseOptions(rest);
+        const { config, outputRoot } = await toCreateProjectRequest(options);
+        const result = await engine.createProject(config, outputRoot, {
+          dryRun: booleanOption(options, "dry-run"),
+          overwrite: booleanOption(options, "force")
+        });
+        const action = result.dryRun ? "Would generate" : "Generated";
+        logger.info(`${action} ${result.filesWritten} files in ${result.outputRoot}`);
+        return;
+      }
+
+      if (command === "wizard") {
+        const options = await promptCreateOptions();
         const { config, outputRoot } = await toCreateProjectRequest(options);
         const result = await engine.createProject(config, outputRoot, {
           dryRun: booleanOption(options, "dry-run"),
@@ -52,7 +66,38 @@ export function createCli(engine: GeneratorEngine, plugins: Plugin[], logger: Lo
       }
 
       if (command === "add") {
-        throw new Error("add commands are reserved for the next implementation phase");
+        const [target, name, ...addArgs] = rest;
+        if (!target || !name) {
+          throw new Error("Usage: archgen add <entity|crud|usecase> <name> [--field name:type] [--project <dir>] [--merge] [--force] [--dry-run]");
+        }
+        const options = parseOptions(addArgs);
+        const projectRoot = stringOption(options, "project") ?? ".";
+        const writeOptions = {
+          dryRun: booleanOption(options, "dry-run"),
+          overwrite: booleanOption(options, "force")
+        };
+
+        if (target === "entity" || target === "crud") {
+          const entity = { name, fields: parseEntityFields(options) };
+          const request = {
+            entity,
+            validation: parseValidation(options),
+            merge: booleanOption(options, "merge")
+          };
+          const result = target === "crud"
+            ? await extender.addCrud(projectRoot, request, writeOptions)
+            : await extender.addEntity(projectRoot, request, writeOptions);
+          logger.info(`${result.dryRun ? "Would add" : "Added"} ${target} ${name}: ${result.filesWritten} files${result.updatedFiles.length ? `, updated ${result.updatedFiles.join(", ")}` : ""}`);
+          return;
+        }
+
+        if (target === "usecase") {
+          const result = await extender.addUseCase(projectRoot, { name }, writeOptions);
+          logger.info(`${result.dryRun ? "Would add" : "Added"} usecase ${name}: ${result.filesWritten} files`);
+          return;
+        }
+
+        throw new Error(`Unknown add target: ${target}`);
       }
 
       throw new Error(`Unknown command: ${command}`);
@@ -70,7 +115,7 @@ function parseOptions(args: string[]): CliOptions {
     }
 
     const key = token.slice(2);
-    if (key === "force" || key === "dry-run" || key === "docker" || key === "nginx" || key === "redis") {
+    if (key === "force" || key === "dry-run" || key === "docker" || key === "nginx" || key === "redis" || key === "merge") {
       options[key] = true;
       continue;
     }
@@ -130,6 +175,8 @@ async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjec
       database: optionalString(merged, "database"),
       orm: optionalString(merged, "orm"),
       auth: optionalString(merged, "auth"),
+      validation: parseValidation(merged),
+      relations: parseRelations(merged),
       docker: optionalBoolean(merged, "docker") ?? booleanOption(options, "docker"),
       nginx: optionalBoolean(merged, "nginx") ?? booleanOption(options, "nginx"),
       redis: optionalBoolean(merged, "redis") ?? booleanOption(options, "redis"),
@@ -152,7 +199,7 @@ async function readConfigFile(path: string): Promise<Record<string, unknown>> {
 }
 
 function removeCliOnlyOptions(options: CliOptions): Record<string, CliValue> {
-  const { config: _config, out: _out, force: _force, "dry-run": _dryRun, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
+  const { config: _config, out: _out, project: _project, force: _force, merge: _merge, "dry-run": _dryRun, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
   return projectOptions;
 }
 
@@ -362,6 +409,31 @@ function parseCliEntities(options: CliOptions): EntityConfig[] | undefined {
   return [...entities.values()];
 }
 
+function parseEntityFields(options: CliOptions): EntityFieldConfig[] {
+  return stringListOption(options, "field").map((spec) => parseStandaloneFieldSpec(spec));
+}
+
+function parseStandaloneFieldSpec(spec: string): EntityFieldConfig {
+  const [left, rawType, rawRequired] = spec.split(":");
+  if (!left || !rawType) {
+    throw new Error(`Invalid --field "${spec}". Use field:type`);
+  }
+
+  const fieldName = left.includes(".") ? left.split(".").at(-1) ?? "" : left;
+  const optionalBySuffix = rawType.endsWith("?");
+  const type = optionalBySuffix ? rawType.slice(0, -1) : rawType;
+
+  if (!fieldName || !isFieldType(type)) {
+    throw new Error(`Invalid --field "${spec}". Use field:type`);
+  }
+
+  return {
+    name: fieldName,
+    type,
+    required: rawRequired === "optional" || optionalBySuffix ? false : undefined
+  };
+}
+
 function parseFieldSpec(spec: string, entityNames: string[]): { entityName: string; field: EntityFieldConfig } {
   const [left, rawType, rawRequired] = spec.split(":");
   if (!left || !rawType) {
@@ -419,6 +491,41 @@ function isFieldType(value: unknown): value is FieldType {
   return value === "string" || value === "number" || value === "boolean" || value === "date" || value === "uuid" || value === "text";
 }
 
+function parseValidation(options: Record<string, unknown>): ValidationProvider | undefined {
+  const value = optionalString(options, "validation");
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value !== "zod" && value !== "class-validator" && value !== "joi") {
+    throw new Error("--validation must be one of: zod, class-validator, joi");
+  }
+  return value;
+}
+
+function parseRelations(options: Record<string, unknown>): RelationConfig[] | undefined {
+  const raw = options.relation;
+  const values = raw === undefined ? [] : typeof raw === "string" ? [raw] : Array.isArray(raw) ? raw : [];
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  return values.map((value) => {
+    if (typeof value !== "string") {
+      throw new Error("--relation requires a value");
+    }
+    const [left, rawKind] = value.split(":");
+    const [source, target] = left?.split(".") ?? [];
+    if (!source || !target || !isRelationKind(rawKind)) {
+      throw new Error(`Invalid --relation "${value}". Use source.target:many-to-one`);
+    }
+    return { source, target, kind: rawKind };
+  });
+}
+
+function isRelationKind(value: unknown): value is RelationKind {
+  return value === "one-to-one" || value === "one-to-many" || value === "many-to-one" || value === "many-to-many";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -427,8 +534,40 @@ function printHelp(logger: Logger): void {
   logger.info(`archgen
 
 Commands:
-  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
   create --name <name> --frontend react --backend express [--database postgres] [--redis] [--docker] [--nginx] [--out <dir>]
+  add entity <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
+  add crud <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
+  add usecase <name> [--project <dir>] [--force] [--dry-run]
+  wizard
   list plugins
   doctor`);
+}
+
+async function promptCreateOptions(): Promise<CliOptions> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const name = await rl.question("Project name: ");
+    const language = await rl.question("Language: ");
+    const framework = await rl.question("Framework: ");
+    const out = await rl.question("Output directory [.]: ");
+    const database = await rl.question("Database [none/postgres/mysql/mongodb]: ");
+    const orm = await rl.question("ORM [none/prisma/sqlalchemy/efcore/jpa/gorm/eloquent]: ");
+    const validation = await rl.question("Validation [none/zod/class-validator/joi]: ");
+    const auth = await rl.question("Auth [none/jwt]: ");
+
+    const options: CliOptions = {
+      name,
+      language,
+      framework,
+      out: out || "."
+    };
+    if (database && database !== "none") options.database = database;
+    if (orm && orm !== "none") options.orm = orm;
+    if (validation && validation !== "none") options.validation = validation;
+    if (auth && auth !== "none") options.auth = auth;
+    return options;
+  } finally {
+    rl.close();
+  }
 }
