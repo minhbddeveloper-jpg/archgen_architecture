@@ -1,5 +1,5 @@
 {
-  "name": "archgen",
+  "name": "@minhbddeveloper-jpg/archgen",
   "version": "0.1.0",
   "description": "Multi-language Clean Architecture project generator.",
   "type": "module",
@@ -10,8 +10,23 @@
     "build": "tsc",
     "start": "node dist/bin/archgen.js",
     "dev": "tsx bin/archgen.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
+  "files": [
+    "dist",
+    "templates",
+    "examples",
+    "docs",
+    "README.md",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minhbddeveloper-jpg/archgen_architecture.git"
+  },
+  "license": "MIT",
   "dependencies": {
     "handlebars": "^4.7.8"
   },

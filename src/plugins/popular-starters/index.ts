@@ -341,10 +341,23 @@ export type Update${entity.className}Input = Partial<Create${entity.className}In
 `
     },
     {
-      path: `${root}/src/infrastructure/repositories/${entity.camelName}Repository.ts`,
+      path: `${root}/src/application/ports/${entity.camelName}RepositoryPort.ts`,
       content: `import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
-export class ${entity.className}Repository {
+export interface ${entity.className}RepositoryPort {
+  findAll(): ${entity.className}[];
+  findById(id: string): ${entity.className} | undefined;
+  save(record: ${entity.className}): ${entity.className};
+  delete(id: string): boolean;
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/repositories/${entity.camelName}Repository.ts`,
+      content: `import { ${entity.className}RepositoryPort } from "../../application/ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
+
+export class ${entity.className}Repository implements ${entity.className}RepositoryPort {
   private readonly records = new Map<string, ${entity.className}>();
 
   findAll(): ${entity.className}[] {
@@ -367,30 +380,60 @@ export class ${entity.className}Repository {
 `
     },
     {
-      path: `${root}/src/application/use-cases/${entity.camelName}Service.ts`,
-      content: `import { randomUUID } from "node:crypto";
-import { Create${entity.className}Input, ${entity.className}, Update${entity.className}Input } from "../../domain/entities/${entity.className}.js";
-import { ${entity.className}Repository } from "../../infrastructure/repositories/${entity.camelName}Repository.js";
+      path: `${root}/src/application/use-cases/list${entity.className}sUseCase.ts`,
+      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
-export class ${entity.className}Service {
-  constructor(private readonly repository = new ${entity.className}Repository()) {}
+export class List${entity.className}sUseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
 
-  list(): ${entity.className}[] {
+  execute(): ${entity.className}[] {
     return this.repository.findAll();
   }
+}
+`
+    },
+    {
+      path: `${root}/src/application/use-cases/get${entity.className}UseCase.ts`,
+      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
-  get(id: string): ${entity.className} | undefined {
+export class Get${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(id: string): ${entity.className} | undefined {
     return this.repository.findById(id);
   }
+}
+`
+    },
+    {
+      path: `${root}/src/application/use-cases/create${entity.className}UseCase.ts`,
+      content: `import { randomUUID } from "node:crypto";
+import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { Create${entity.className}Input, ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
-  create(input: Create${entity.className}Input): ${entity.className} {
+export class Create${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(input: Create${entity.className}Input): ${entity.className} {
     return this.repository.save({
       id: randomUUID(),
 ${defaultInput}
     });
   }
+}
+`
+    },
+    {
+      path: `${root}/src/application/use-cases/update${entity.className}UseCase.ts`,
+      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className}, Update${entity.className}Input } from "../../domain/entities/${entity.className}.js";
 
-  update(id: string, input: Update${entity.className}Input): ${entity.className} | undefined {
+export class Update${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(id: string, input: Update${entity.className}Input): ${entity.className} | undefined {
     const current = this.repository.findById(id);
     if (!current) {
       return undefined;
@@ -398,8 +441,17 @@ ${defaultInput}
 
     return this.repository.save({ ...current, ...input, id });
   }
+}
+`
+    },
+    {
+      path: `${root}/src/application/use-cases/delete${entity.className}UseCase.ts`,
+      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
 
-  delete(id: string): boolean {
+export class Delete${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(id: string): boolean {
     return this.repository.delete(id);
   }
 }
@@ -408,23 +460,33 @@ ${defaultInput}
     {
       path: `${root}/src/presentation/controllers/${entity.camelName}Controller.ts`,
       content: `import { Router } from "express";
-import { ${entity.className}Service } from "../../application/use-cases/${entity.camelName}Service.js";
+import { Create${entity.className}UseCase } from "../../application/use-cases/create${entity.className}UseCase.js";
+import { Delete${entity.className}UseCase } from "../../application/use-cases/delete${entity.className}UseCase.js";
+import { Get${entity.className}UseCase } from "../../application/use-cases/get${entity.className}UseCase.js";
+import { List${entity.className}sUseCase } from "../../application/use-cases/list${entity.className}sUseCase.js";
+import { Update${entity.className}UseCase } from "../../application/use-cases/update${entity.className}UseCase.js";
+import { ${entity.className}Repository } from "../../infrastructure/repositories/${entity.camelName}Repository.js";
 
-export function create${entity.className}Router(service = new ${entity.className}Service()): Router {
+export function create${entity.className}Router(repository = new ${entity.className}Repository()): Router {
   const router = Router();
+  const list${entity.className}s = new List${entity.className}sUseCase(repository);
+  const get${entity.className} = new Get${entity.className}UseCase(repository);
+  const create${entity.className} = new Create${entity.className}UseCase(repository);
+  const update${entity.className} = new Update${entity.className}UseCase(repository);
+  const delete${entity.className} = new Delete${entity.className}UseCase(repository);
 
-  router.get("/", (_request, response) => response.json(service.list()));
+  router.get("/", (_request, response) => response.json(list${entity.className}s.execute()));
   router.get("/:id", (request, response) => {
-    const record = service.get(request.params.id);
+    const record = get${entity.className}.execute(request.params.id);
     return record ? response.json(record) : response.sendStatus(404);
   });
-  router.post("/", (request, response) => response.status(201).json(service.create(request.body)));
+  router.post("/", (request, response) => response.status(201).json(create${entity.className}.execute(request.body)));
   router.put("/:id", (request, response) => {
-    const record = service.update(request.params.id, request.body);
+    const record = update${entity.className}.execute(request.params.id, request.body);
     return record ? response.json(record) : response.sendStatus(404);
   });
   router.delete("/:id", (request, response) => {
-    return service.delete(request.params.id) ? response.sendStatus(204) : response.sendStatus(404);
+    return delete${entity.className}.execute(request.params.id) ? response.sendStatus(204) : response.sendStatus(404);
   });
 
   return router;

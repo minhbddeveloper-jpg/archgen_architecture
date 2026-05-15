@@ -443,8 +443,14 @@ generated/
         entities/
           Student.ts
       application/
+        ports/
+          studentRepositoryPort.ts
         use-cases/
-          studentService.ts
+          listStudentsUseCase.ts
+          getStudentUseCase.ts
+          createStudentUseCase.ts
+          updateStudentUseCase.ts
+          deleteStudentUseCase.ts
       infrastructure/
         repositories/
           studentRepository.ts
