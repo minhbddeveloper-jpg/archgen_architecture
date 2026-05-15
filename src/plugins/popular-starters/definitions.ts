@@ -44,6 +44,17 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/src/presentation/controllers",
       "{{projectSlug}}/src/presentation/routes"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      dto: true,
+      validation: true,
+      pagination: true,
+      auth: ["jwt"],
+      orm: ["prisma"],
+      relations: true,
+      extendExistingProject: true
+    },
     crudStyle: "typescript-express"
   },
   {
@@ -63,6 +74,13 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/src/shared/config",
       "{{projectSlug}}/src/shared/auth"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      dto: true,
+      validation: true,
+      pagination: true
+    },
     crudStyle: "typescript-nestjs"
   },
   {

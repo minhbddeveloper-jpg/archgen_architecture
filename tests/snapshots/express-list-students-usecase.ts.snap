@@ -1,0 +1,21 @@
+import { StudentRepositoryPort } from "../ports/studentRepositoryPort.js";
+import { PaginationQueryDto } from "../dtos/studentDto.js";
+import { PaginatedResponse } from "../../shared/apiResponse.js";
+import { Student } from "../../domain/entities/Student.js";
+
+export class ListStudentsUseCase {
+  constructor(private readonly repository: StudentRepositoryPort) {}
+
+  execute(query: PaginationQueryDto = {}): PaginatedResponse<Student> {
+    const page = Math.max(Number(query.page ?? 1), 1);
+    const limit = Math.max(Number(query.limit ?? 10), 1);
+    const q = query.q?.toLowerCase();
+    const records = this.repository.findAll().filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const start = (page - 1) * limit;
+
+    return {
+      data: records.slice(start, start + limit),
+      meta: { page, limit, total: records.length }
+    };
+  }
+}

@@ -1,0 +1,42 @@
+import { Router } from "express";
+import { CreateStudentUseCase } from "../../application/use-cases/createStudentUseCase.js";
+import { DeleteStudentUseCase } from "../../application/use-cases/deleteStudentUseCase.js";
+import { GetStudentUseCase } from "../../application/use-cases/getStudentUseCase.js";
+import { ListStudentsUseCase } from "../../application/use-cases/listStudentsUseCase.js";
+import { UpdateStudentUseCase } from "../../application/use-cases/updateStudentUseCase.js";
+import { StudentRepository } from "../../infrastructure/repositories/studentRepository.js";
+import { ok } from "../../shared/apiResponse.js";
+import { createStudentSchema, updateStudentSchema } from "../validation/studentSchemas.js";
+
+export function createStudentRouter(repository = new StudentRepository()): Router {
+  const router = Router();
+  const listStudents = new ListStudentsUseCase(repository);
+  const getStudent = new GetStudentUseCase(repository);
+  const createStudent = new CreateStudentUseCase(repository);
+  const updateStudent = new UpdateStudentUseCase(repository);
+  const deleteStudent = new DeleteStudentUseCase(repository);
+
+  router.get("/", (request, response) => response.json(ok("Student list loaded", listStudents.execute({
+    page: Number(request.query.page ?? 1),
+    limit: Number(request.query.limit ?? 10),
+    q: typeof request.query.q === "string" ? request.query.q : undefined
+  }))));
+  router.get("/:id", (request, response) => {
+    const record = getStudent.execute(request.params.id);
+    return record ? response.json(ok("Student loaded", record)) : response.sendStatus(404);
+  });
+  router.post("/", (request, response) => {
+    const payload = createStudentSchema.parse(request.body);
+    return response.status(201).json(ok("Student created", createStudent.execute(payload)));
+  });
+  router.put("/:id", (request, response) => {
+    const payload = updateStudentSchema.parse(request.body);
+    const record = updateStudent.execute(request.params.id, payload);
+    return record ? response.json(ok("Student updated", record)) : response.sendStatus(404);
+  });
+  router.delete("/:id", (request, response) => {
+    return deleteStudent.execute(request.params.id) ? response.sendStatus(204) : response.sendStatus(404);
+  });
+
+  return router;
+}

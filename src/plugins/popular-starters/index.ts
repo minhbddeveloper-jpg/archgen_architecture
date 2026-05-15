@@ -327,6 +327,7 @@ function indent(value: string, spaces: number): string {
 
 function typescriptExpressCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {
   const root = contextString(context, "projectSlug");
+  const validation = contextString(context, "validation");
   const fieldLines = entity.fields.map((field) => `  ${field.camelName}${field.required ? "" : "?"}: ${field.tsType};`).join("\n");
   const defaultInput = entity.fields.map((field) => `      ${field.camelName}: input.${field.camelName}`).join(",\n");
 
@@ -384,13 +385,24 @@ export class ${entity.className}Repository implements ${entity.className}Reposit
     {
       path: `${root}/src/application/use-cases/list${entity.className}sUseCase.ts`,
       content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { PaginationQueryDto } from "../dtos/${entity.camelName}Dto.js";
+import { PaginatedResponse } from "../../shared/apiResponse.js";
 import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
 export class List${entity.className}sUseCase {
   constructor(private readonly repository: ${entity.className}RepositoryPort) {}
 
-  execute(): ${entity.className}[] {
-    return this.repository.findAll();
+  execute(query: PaginationQueryDto = {}): PaginatedResponse<${entity.className}> {
+    const page = Math.max(Number(query.page ?? 1), 1);
+    const limit = Math.max(Number(query.limit ?? 10), 1);
+    const q = query.q?.toLowerCase();
+    const records = this.repository.findAll().filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const start = (page - 1) * limit;
+
+    return {
+      data: records.slice(start, start + limit),
+      meta: { page, limit, total: records.length }
+    };
   }
 }
 `
@@ -468,6 +480,8 @@ import { Get${entity.className}UseCase } from "../../application/use-cases/get${
 import { List${entity.className}sUseCase } from "../../application/use-cases/list${entity.className}sUseCase.js";
 import { Update${entity.className}UseCase } from "../../application/use-cases/update${entity.className}UseCase.js";
 import { ${entity.className}Repository } from "../../infrastructure/repositories/${entity.camelName}Repository.js";
+import { ok } from "../../shared/apiResponse.js";
+${validation ? `import { create${entity.className}Schema, update${entity.className}Schema } from "../validation/${entity.camelName}Schemas.js";` : ""}
 
 export function create${entity.className}Router(repository = new ${entity.className}Repository()): Router {
   const router = Router();
@@ -477,15 +491,23 @@ export function create${entity.className}Router(repository = new ${entity.classN
   const update${entity.className} = new Update${entity.className}UseCase(repository);
   const delete${entity.className} = new Delete${entity.className}UseCase(repository);
 
-  router.get("/", (_request, response) => response.json(list${entity.className}s.execute()));
+  router.get("/", (request, response) => response.json(ok("${entity.className} list loaded", list${entity.className}s.execute({
+    page: Number(request.query.page ?? 1),
+    limit: Number(request.query.limit ?? 10),
+    q: typeof request.query.q === "string" ? request.query.q : undefined
+  }))));
   router.get("/:id", (request, response) => {
     const record = get${entity.className}.execute(request.params.id);
-    return record ? response.json(record) : response.sendStatus(404);
+    return record ? response.json(ok("${entity.className} loaded", record)) : response.sendStatus(404);
   });
-  router.post("/", (request, response) => response.status(201).json(create${entity.className}.execute(request.body)));
+  router.post("/", (request, response) => {
+    const payload = ${validation ? `create${entity.className}Schema.parse(request.body)` : "request.body"};
+    return response.status(201).json(ok("${entity.className} created", create${entity.className}.execute(payload)));
+  });
   router.put("/:id", (request, response) => {
-    const record = update${entity.className}.execute(request.params.id, request.body);
-    return record ? response.json(record) : response.sendStatus(404);
+    const payload = ${validation ? `update${entity.className}Schema.parse(request.body)` : "request.body"};
+    const record = update${entity.className}.execute(request.params.id, payload);
+    return record ? response.json(ok("${entity.className} updated", record)) : response.sendStatus(404);
   });
   router.delete("/:id", (request, response) => {
     return delete${entity.className}.execute(request.params.id) ? response.sendStatus(204) : response.sendStatus(404);
@@ -506,7 +528,9 @@ export function create${entity.className}Router(repository = new ${entity.classN
 function typescriptNestJsCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {
   const root = contextString(context, "projectSlug");
   const fields = entity.fields.map((field) => `  ${field.camelName}: ${field.tsType};`).join("\n");
-  const dtoFields = entity.fields.map((field) => `  ${field.required ? "" : "@IsOptional()\n  "}${nestjsValidator(field.type)}\n  ${field.camelName}!: ${field.tsType};`).join("\n\n");
+  const dtoFields = entity.fields.map((field) => `  @ApiProperty({ required: ${field.required ? "true" : "false"} })
+  ${field.required ? "" : "@IsOptional()\n  "}${nestjsValidator(field.type)}
+  ${field.camelName}!: ${field.tsType};`).join("\n\n");
   const moduleRoot = `${root}/src/modules/${entity.routeName}`;
 
   return [
@@ -542,6 +566,35 @@ ${dtoFields || "  @ApiProperty()\n  name!: string;"}
 }
 
 export class Update${entity.className}Dto extends PartialType(Create${entity.className}Dto) {}
+
+export class ${entity.className}QueryDto {
+  @ApiProperty({ required: false, default: 1 })
+  @IsOptional()
+  page?: number;
+
+  @ApiProperty({ required: false, default: 10 })
+  @IsOptional()
+  limit?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  q?: string;
+}
+
+export type ${entity.className}ResponseDto = {
+  id: string;
+${fields}
+};
+
+export interface Paginated${entity.className}ResponseDto {
+  data: ${entity.className}ResponseDto[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+}
 `
     },
     {
@@ -549,15 +602,24 @@ export class Update${entity.className}Dto extends PartialType(Create${entity.cla
       content: `import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { ${entity.className} } from "../domain/${entity.className}";
-import { Create${entity.className}Dto, Update${entity.className}Dto } from "./dto/${entity.camelName}.dto";
+import { Create${entity.className}Dto, Paginated${entity.className}ResponseDto, ${entity.className}QueryDto, Update${entity.className}Dto } from "./dto/${entity.camelName}.dto";
 import { ${entity.className}Repository, ${entity.className.toUpperCase()}_REPOSITORY } from "./ports/${entity.camelName}Repository";
 
 @Injectable()
 export class ${entity.className}Service {
   constructor(@Inject(${entity.className.toUpperCase()}_REPOSITORY) private readonly repository: ${entity.className}Repository) {}
 
-  findAll(): ${entity.className}[] {
-    return this.repository.findAll();
+  findAll(query: ${entity.className}QueryDto = {}): Paginated${entity.className}ResponseDto {
+    const page = Math.max(Number(query.page ?? 1), 1);
+    const limit = Math.max(Number(query.limit ?? 10), 1);
+    const q = query.q?.toLowerCase();
+    const records = this.repository.findAll().filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const start = (page - 1) * limit;
+
+    return {
+      data: records.slice(start, start + limit),
+      meta: { page, limit, total: records.length }
+    };
   }
 
   findById(id: string): ${entity.className} | undefined {
@@ -608,10 +670,10 @@ export class ${entity.className}MemoryRepository implements ${entity.className}R
     },
     {
       path: `${moduleRoot}/presentation/${entity.routeName}.controller.ts`,
-      content: `import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from "@nestjs/common";
+      content: `import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put, Query } from "@nestjs/common";
 import { ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ${entity.className}Service } from "../application/${entity.camelName}.service";
-import { Create${entity.className}Dto, Update${entity.className}Dto } from "../application/dto/${entity.camelName}.dto";
+import { Create${entity.className}Dto, ${entity.className}QueryDto, Update${entity.className}Dto } from "../application/dto/${entity.camelName}.dto";
 
 @ApiTags("${entity.routeName}")
 @Controller("${entity.routeName}")
@@ -620,8 +682,8 @@ export class ${entity.className}Controller {
 
   @Get()
   @ApiResponse({ status: 200 })
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query() query: ${entity.className}QueryDto) {
+    return this.service.findAll(query);
   }
 
   @Get(":id")

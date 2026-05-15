@@ -5,14 +5,18 @@ import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
+function readNormalized(path) {
+  return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+}
+
 test("generates TypeScript Express clean architecture output with ports and specific use cases", () => {
-  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 
   try {
     execFileSync(
       process.execPath,
       [
-        "dist/bin/archgen.js",
+        "dist/bin/arxgen.js",
         "create",
         "--name",
         "student-api",
@@ -50,7 +54,7 @@ test("generates TypeScript Express clean architecture output with ports and spec
       assert.equal(existsSync(join(projectRoot, file)), true, `Expected ${file} to exist`);
     }
 
-    const controller = readFileSync(join(projectRoot, "src/presentation/controllers/studentController.ts"), "utf8");
+    const controller = readNormalized(join(projectRoot, "src/presentation/controllers/studentController.ts"));
     assert.match(controller, /CreateStudentUseCase/);
     assert.match(controller, /ListStudentsUseCase/);
     assert.doesNotMatch(controller, /StudentService/);
@@ -60,13 +64,13 @@ test("generates TypeScript Express clean architecture output with ports and spec
 });
 
 test("generates setup and ORM artifacts when requested", () => {
-  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 
   try {
     execFileSync(
       process.execPath,
       [
-        "dist/bin/archgen.js",
+        "dist/bin/arxgen.js",
         "create",
         "--name",
         "student-api",
@@ -102,13 +106,13 @@ test("generates setup and ORM artifacts when requested", () => {
 });
 
 test("adds a new TypeScript Express entity to an existing project and merges routes", () => {
-  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 
   try {
     execFileSync(
       process.execPath,
       [
-        "dist/bin/archgen.js",
+        "dist/bin/arxgen.js",
         "create",
         "--name",
         "school-api",
@@ -126,7 +130,7 @@ test("adds a new TypeScript Express entity to an existing project and merges rou
     execFileSync(
       process.execPath,
       [
-        join(process.cwd(), "dist/bin/archgen.js"),
+        join(process.cwd(), "dist/bin/arxgen.js"),
         "add",
         "entity",
         "student",
@@ -147,7 +151,7 @@ test("adds a new TypeScript Express entity to an existing project and merges rou
     assert.equal(existsSync(join(projectRoot, "src/application/dtos/studentDto.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/presentation/validation/studentSchemas.ts")), true);
 
-    const main = readFileSync(join(projectRoot, "src/main.ts"), "utf8");
+    const main = readNormalized(join(projectRoot, "src/main.ts"));
     assert.match(main, /createStudentRouter/);
     assert.match(main, /app\.use\("\/students", createStudentRouter\(\)\)/);
   } finally {
@@ -156,13 +160,13 @@ test("adds a new TypeScript Express entity to an existing project and merges rou
 });
 
 test("generates auth, validation, pagination, and relation support for TypeScript Express", () => {
-  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 
   try {
     execFileSync(
       process.execPath,
       [
-        "dist/bin/archgen.js",
+        "dist/bin/arxgen.js",
         "create",
         "--name",
         "course-api",
@@ -200,11 +204,11 @@ test("generates auth, validation, pagination, and relation support for TypeScrip
     assert.equal(existsSync(join(projectRoot, "src/application/dtos/studentDto.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/presentation/validation/studentSchemas.ts")), true);
 
-    const schema = readFileSync(join(projectRoot, "prisma/schema.prisma"), "utf8");
+    const schema = readNormalized(join(projectRoot, "prisma/schema.prisma"));
     assert.match(schema, /studentId String/);
     assert.match(schema, /student Student @relation/);
 
-    const main = readFileSync(join(projectRoot, "src/main.ts"), "utf8");
+    const main = readNormalized(join(projectRoot, "src/main.ts"));
     assert.match(main, /app\.use\("\/auth", createAuthRouter\(\)\)/);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
@@ -212,13 +216,13 @@ test("generates auth, validation, pagination, and relation support for TypeScrip
 });
 
 test("generates NestJS clean architecture module output", () => {
-  const outputRoot = mkdtempSync(join(tmpdir(), "archgen-test-"));
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 
   try {
     execFileSync(
       process.execPath,
       [
-        "dist/bin/archgen.js",
+        "dist/bin/arxgen.js",
         "create",
         "--name",
         "nest-school",
@@ -241,9 +245,131 @@ test("generates NestJS clean architecture module output", () => {
     assert.equal(existsSync(join(projectRoot, "src/modules/students/presentation/students.controller.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/modules/students/application/ports/studentRepository.ts")), true);
 
-    const main = readFileSync(join(projectRoot, "src/main.ts"), "utf8");
+    const main = readNormalized(join(projectRoot, "src/main.ts"));
     assert.match(main, /SwaggerModule/);
     assert.match(main, /ValidationPipe/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("generated file snapshots stay stable for core Express and NestJS outputs", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "course-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--field",
+        "email:string",
+        "--validation",
+        "zod",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "nest-school",
+        "--language",
+        "typescript",
+        "--framework",
+        "nestjs",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--field",
+        "email:string",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const comparisons = [
+      ["course-api/src/presentation/controllers/studentController.ts", "express-student-controller.ts.snap"],
+      ["course-api/src/application/use-cases/listStudentsUseCase.ts", "express-list-students-usecase.ts.snap"],
+      ["nest-school/src/modules/students/presentation/students.controller.ts", "nestjs-students-controller.ts.snap"],
+      ["nest-school/src/modules/students/application/student.service.ts", "nestjs-student-service.ts.snap"]
+    ];
+
+    for (const [generated, snapshot] of comparisons) {
+      assert.equal(
+        readNormalized(join(outputRoot, generated)),
+        readNormalized(join(process.cwd(), "tests", "snapshots", snapshot)),
+        `${generated} should match ${snapshot}`
+      );
+    }
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("add entity route merge snapshot stays stable", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "school-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "school-api");
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "add",
+        "entity",
+        "student",
+        "--field",
+        "name:string",
+        "--field",
+        "email:string",
+        "--project",
+        projectRoot,
+        "--validation",
+        "zod",
+        "--merge"
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    assert.equal(
+      readNormalized(join(projectRoot, "src/main.ts")),
+      readNormalized(join(process.cwd(), "tests", "snapshots", "add-entity-main.ts.snap"))
+    );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }

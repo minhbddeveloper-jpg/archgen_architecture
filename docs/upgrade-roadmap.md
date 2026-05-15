@@ -1,13 +1,13 @@
-# ArchGen Upgrade Roadmap
+# arxgen Upgrade Roadmap
 
-This roadmap defines the next major upgrades for ArchGen. The main direction is to evolve ArchGen from a project starter generator into an architecture evolution tool that can safely extend existing projects.
+This roadmap defines the next major upgrades for arxgen. The main direction is to evolve arxgen from a project starter generator into an architecture evolution tool that can safely extend existing projects.
 
 Current implementation status:
 
-- `archgen add entity`, `archgen add crud`, and `archgen add usecase` are available for generated TypeScript Express projects.
+- `arxgen add entity`, `arxgen add crud`, and `arxgen add usecase` are available for generated TypeScript Express projects.
 - TypeScript Express generation supports DTO artifacts, validation schema artifacts, JWT auth scaffolding, pagination DTOs, standard API response helpers, and Prisma relation metadata.
 - NestJS starter generation is available with module, controller, service, provider, Swagger, config, and validation pipe scaffolding.
-- `archgen wizard` provides a basic interactive terminal flow.
+- `arxgen wizard` provides a basic interactive terminal flow.
 - Multi-framework AST merge support, full RBAC, refresh token persistence, and advanced relation types remain future work.
 
 ## 1. Add Commands for Existing Projects
@@ -19,9 +19,9 @@ Goal: Allow users to extend an already generated project instead of creating a n
 Example commands:
 
 ```bash
-archgen add entity student
-archgen add crud student
-archgen add usecase CreateStudent
+arxgen add entity student
+arxgen add crud student
+arxgen add usecase CreateStudent
 ```
 
 ### 1.1 Parse Existing Project Structure
@@ -47,7 +47,7 @@ src/
 Example:
 
 ```bash
-archgen add entity student \
+arxgen add entity student \
   --field name:string \
   --field email:string \
   --field age:number
@@ -65,7 +65,7 @@ StudentRoutes.ts
 
 ### 1.3 Update Existing Files Automatically
 
-ArchGen should update integration points such as:
+arxgen should update integration points such as:
 
 - Route index files
 - Dependency injection containers
@@ -92,7 +92,7 @@ model Student {
 
 ### 1.4 Conflict Resolver
 
-ArchGen should handle conflicts such as an entity that already exists.
+arxgen should handle conflicts such as an entity that already exists.
 
 Supported options:
 
@@ -101,7 +101,7 @@ Supported options:
 
 ### 1.5 AST-Based Code Modification
 
-ArchGen should avoid fragile string replacement when modifying existing code.
+arxgen should avoid fragile string replacement when modifying existing code.
 
 Recommended tools:
 
@@ -330,7 +330,7 @@ include: {
 
 ### 4.6 Circular Dependency Handling
 
-ArchGen should handle relationship cycles such as:
+arxgen should handle relationship cycles such as:
 
 ```text
 Student -> Course -> Student
@@ -459,7 +459,7 @@ Show a project structure preview before generation.
 Generate:
 
 ```text
-archgen.json
+arxgen.json
 ```
 
 ### 6.6 Presets
@@ -467,11 +467,11 @@ archgen.json
 Example:
 
 ```bash
-archgen create --preset saas
+arxgen create --preset saas
 ```
 
 ## Final Direction
 
-ArchGen should use a unified semantic architecture model internally. Concepts such as Entity, Repository, UseCase, DTO, Service, Controller, Relation, AuthPolicy, and ValidationSchema should map into framework-specific templates.
+arxgen should use a unified semantic architecture model internally. Concepts such as Entity, Repository, UseCase, DTO, Service, Controller, Relation, AuthPolicy, and ValidationSchema should map into framework-specific templates.
 
 This keeps the generator scalable and makes it easier to support new languages, frameworks, and advanced project evolution features.

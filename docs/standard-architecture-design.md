@@ -1,6 +1,6 @@
-# Standard Architecture Design for ArchGen Plugins
+# Standard Architecture Design for arxgen Plugins
 
-This document defines the recommended Clean Architecture structures for supported languages and frameworks in the ArchGen project generator.
+This document defines the recommended Clean Architecture structures for supported languages and frameworks in the arxgen project generator.
 
 ## Supported Plugins
 
@@ -209,6 +209,6 @@ Recommended stack:
 
 ## Final Recommendation
 
-ArchGen should internally use a unified semantic architecture model that maps concepts such as `Entity`, `Repository`, `UseCase`, `DTO`, `Service`, and `Controller` into framework-specific templates.
+arxgen should internally use a unified semantic architecture model that maps concepts such as `Entity`, `Repository`, `UseCase`, `DTO`, `Service`, and `Controller` into framework-specific templates.
 
 This architecture keeps the generator scalable and makes it easier to support new languages and frameworks without rewriting the core generation flow.

@@ -1,0 +1,40 @@
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put, Query } from "@nestjs/common";
+import { ApiResponse, ApiTags } from "@nestjs/swagger";
+import { StudentService } from "../application/student.service";
+import { CreateStudentDto, StudentQueryDto, UpdateStudentDto } from "../application/dto/student.dto";
+
+@ApiTags("students")
+@Controller("students")
+export class StudentController {
+  constructor(private readonly service: StudentService) {}
+
+  @Get()
+  @ApiResponse({ status: 200 })
+  findAll(@Query() query: StudentQueryDto) {
+    return this.service.findAll(query);
+  }
+
+  @Get(":id")
+  findById(@Param("id") id: string) {
+    const record = this.service.findById(id);
+    if (!record) throw new NotFoundException();
+    return record;
+  }
+
+  @Post()
+  create(@Body() input: CreateStudentDto) {
+    return this.service.create(input);
+  }
+
+  @Put(":id")
+  update(@Param("id") id: string, @Body() input: UpdateStudentDto) {
+    const record = this.service.update(id, input);
+    if (!record) throw new NotFoundException();
+    return record;
+  }
+
+  @Delete(":id")
+  delete(@Param("id") id: string) {
+    if (!this.service.delete(id)) throw new NotFoundException();
+  }
+}

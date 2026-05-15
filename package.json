@@ -1,16 +1,16 @@
 {
   "name": "arxgen",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Multi-language Clean Architecture project generator.",
   "type": "module",
   "bin": {
-    "archgen": "dist/bin/archgen.js",
-    "arxgen": "dist/bin/archgen.js"
+    "arxgen": "dist/bin/arxgen.js"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/bin/archgen.js",
-    "dev": "tsx bin/archgen.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
+    "start": "node dist/bin/arxgen.js",
+    "dev": "tsx bin/arxgen.ts",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
     "prepublishOnly": "npm run typecheck && npm test"

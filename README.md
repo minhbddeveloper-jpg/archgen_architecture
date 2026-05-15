@@ -1,6 +1,6 @@
-# ArchGen
+# arxgen
 
-ArchGen is a CLI project generator for creating Clean Architecture-style starters across popular languages and frameworks.
+arxgen is a CLI project generator for creating Clean Architecture-style starters across popular languages and frameworks.
 
 It can generate:
 
@@ -270,7 +270,7 @@ You can use a JSON config for repeatable project generation.
 Run:
 
 ```bash
-arxgen create --config ./archgen.json
+arxgen create --config ./arxgen.json
 ```
 
 ## Local Development

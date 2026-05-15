@@ -35,7 +35,7 @@ export class ProjectExtender {
   async addEntity(projectRoot: string, request: AddEntityRequest, options: WriteFilesOptions = {}): Promise<ExtendProjectResult> {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
-    const files = typescriptExpressEntityFiles(request.entity, request.validation);
+    const files = await filterExistingSharedFiles(root, typescriptExpressEntityFiles(request.entity, request.validation), options);
     await this.fileWriter.writeFiles(root, files, options);
 
     const updatedFiles: string[] = [];
@@ -43,6 +43,12 @@ export class ProjectExtender {
       const updatedMain = await registerTypeScriptExpressRoute(root, request.entity, Boolean(options.dryRun));
       if (updatedMain) {
         updatedFiles.push("src/main.ts");
+      }
+      if (request.validation) {
+        const updatedPackageJson = await ensureValidationDependency(root, request.validation, Boolean(options.dryRun));
+        if (updatedPackageJson) {
+          updatedFiles.push("package.json");
+        }
       }
     }
 
@@ -85,6 +91,42 @@ export class ProjectExtender {
       updatedFiles: []
     };
   }
+}
+
+async function filterExistingSharedFiles(root: string, files: GeneratedFile[], options: WriteFilesOptions): Promise<GeneratedFile[]> {
+  if (options.overwrite) {
+    return files;
+  }
+
+  const optionalSharedFiles = new Set(["src/shared/apiResponse.ts"]);
+  const result: GeneratedFile[] = [];
+  for (const file of files) {
+    if (optionalSharedFiles.has(file.path) && (await exists(join(root, file.path)))) {
+      continue;
+    }
+    result.push(file);
+  }
+  return result;
+}
+
+async function ensureValidationDependency(root: string, validation: ValidationProvider, dryRun: boolean): Promise<boolean> {
+  const packageJsonPath = join(root, "package.json");
+  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+  const dependencyName = validation;
+  const version = validation === "zod" ? "^3.23.8" : validation === "joi" ? "^17.13.3" : "^0.14.1";
+
+  packageJson.dependencies ??= {};
+  if (packageJson.dependencies[dependencyName]) {
+    return false;
+  }
+
+  packageJson.dependencies[dependencyName] = version;
+  if (!dryRun) {
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
+  }
+  return true;
 }
 
 async function detectProject(root: string): Promise<ProjectDetection> {

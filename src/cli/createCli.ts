@@ -61,14 +61,14 @@ export function createCli(engine: GeneratorEngine, extender: ProjectExtender, pl
       }
 
       if (command === "doctor") {
-        logger.info(`archgen ok: ${plugins.length} plugin(s) available`);
+        logger.info(`arxgen ok: ${plugins.length} plugin(s) available`);
         return;
       }
 
       if (command === "add") {
         const [target, name, ...addArgs] = rest;
         if (!target || !name) {
-          throw new Error("Usage: archgen add <entity|crud|usecase> <name> [--field name:type] [--project <dir>] [--merge] [--force] [--dry-run]");
+          throw new Error("Usage: arxgen add <entity|crud|usecase> <name> [--field name:type] [--project <dir>] [--merge] [--force] [--dry-run]");
         }
         const options = parseOptions(addArgs);
         const projectRoot = stringOption(options, "project") ?? ".";
@@ -531,7 +531,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function printHelp(logger: Logger): void {
-  logger.info(`archgen
+  logger.info(`arxgen
 
 Commands:
   create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]

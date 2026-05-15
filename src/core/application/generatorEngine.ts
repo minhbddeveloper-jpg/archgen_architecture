@@ -708,9 +708,9 @@ function envExample(config: ProjectConfig): string {
     "APP_ENV=development",
     "API_PORT=3000",
     "WEB_PORT=5173",
-    database === "postgres" ? "DATABASE_URL=postgres://archgen:archgen@db:5432/archgen" : undefined,
-    database === "mysql" ? "DATABASE_URL=mysql://archgen:archgen@db:3306/archgen" : undefined,
-    database === "mongodb" ? "DATABASE_URL=mongodb://db:27017/archgen" : undefined,
+    database === "postgres" ? "DATABASE_URL=postgres://arxgen:arxgen@db:5432/arxgen" : undefined,
+    database === "mysql" ? "DATABASE_URL=mysql://arxgen:arxgen@db:3306/arxgen" : undefined,
+    database === "mongodb" ? "DATABASE_URL=mongodb://db:27017/arxgen" : undefined,
     config.redis ? "REDIS_URL=redis://redis:6379" : undefined,
     config.auth === "jwt" ? "JWT_SECRET=change-me" : undefined,
     config.auth === "jwt" ? "JWT_EXPIRES=15m" : undefined,
@@ -761,10 +761,10 @@ function databaseService(database: string): string {
     return `  db:
     image: mysql:8
     environment:
-      MYSQL_DATABASE: archgen
-      MYSQL_USER: archgen
-      MYSQL_PASSWORD: archgen
-      MYSQL_ROOT_PASSWORD: archgen
+      MYSQL_DATABASE: arxgen
+      MYSQL_USER: arxgen
+      MYSQL_PASSWORD: arxgen
+      MYSQL_ROOT_PASSWORD: arxgen
     ports:
       - "3306:3306"`;
   }
@@ -777,9 +777,9 @@ function databaseService(database: string): string {
   return `  db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: archgen
-      POSTGRES_USER: archgen
-      POSTGRES_PASSWORD: archgen
+      POSTGRES_DB: arxgen
+      POSTGRES_USER: arxgen
+      POSTGRES_PASSWORD: arxgen
     ports:
       - "5432:5432"`;
 }

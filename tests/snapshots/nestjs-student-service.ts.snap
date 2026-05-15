@@ -1,0 +1,40 @@
+import { Inject, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { Student } from "../domain/Student";
+import { CreateStudentDto, PaginatedStudentResponseDto, StudentQueryDto, UpdateStudentDto } from "./dto/student.dto";
+import { StudentRepository, STUDENT_REPOSITORY } from "./ports/studentRepository";
+
+@Injectable()
+export class StudentService {
+  constructor(@Inject(STUDENT_REPOSITORY) private readonly repository: StudentRepository) {}
+
+  findAll(query: StudentQueryDto = {}): PaginatedStudentResponseDto {
+    const page = Math.max(Number(query.page ?? 1), 1);
+    const limit = Math.max(Number(query.limit ?? 10), 1);
+    const q = query.q?.toLowerCase();
+    const records = this.repository.findAll().filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const start = (page - 1) * limit;
+
+    return {
+      data: records.slice(start, start + limit),
+      meta: { page, limit, total: records.length }
+    };
+  }
+
+  findById(id: string): Student | undefined {
+    return this.repository.findById(id);
+  }
+
+  create(input: CreateStudentDto): Student {
+    return this.repository.save({ id: randomUUID(), ...input });
+  }
+
+  update(id: string, input: UpdateStudentDto): Student | undefined {
+    const current = this.repository.findById(id);
+    return current ? this.repository.save({ ...current, ...input, id }) : undefined;
+  }
+
+  delete(id: string): boolean {
+    return this.repository.delete(id);
+  }
+}

@@ -10,6 +10,17 @@ export interface StarterDefinition {
   templateDir: string;
   files: TemplateFile[];
   keepDirs: string[];
+  capabilities?: {
+    entities?: boolean;
+    crud?: boolean;
+    dto?: boolean;
+    validation?: boolean;
+    pagination?: boolean;
+    auth?: string[];
+    orm?: string[];
+    relations?: boolean;
+    extendExistingProject?: boolean;
+  };
   crudStyle?: CrudStyle;
 }
 
