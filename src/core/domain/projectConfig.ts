@@ -6,6 +6,12 @@ export interface EntityFieldConfig {
   name: string;
   type: FieldType;
   required?: boolean;
+  unique?: boolean;
+  indexed?: boolean;
+  defaultValue?: string;
+  length?: number;
+  precision?: number;
+  scale?: number;
 }
 
 export interface EntityConfig {

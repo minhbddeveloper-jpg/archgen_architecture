@@ -2,6 +2,7 @@ import { GeneratedFile } from "../domain/generatedFile.js";
 import { Plugin } from "../domain/plugin.js";
 import { EntityConfig, EntityFieldConfig, FieldType, ProjectConfig, ValidationProvider } from "../domain/projectConfig.js";
 import { FileWriter, WriteFilesOptions } from "./ports/fileWriter.js";
+import { GenerationPipeline } from "./generationPipeline.js";
 
 export interface CreateProjectResult {
   outputRoot: string;
@@ -12,7 +13,8 @@ export interface CreateProjectResult {
 export class GeneratorEngine {
   constructor(
     private readonly plugins: Plugin[],
-    private readonly fileWriter: FileWriter
+    private readonly fileWriter: FileWriter,
+    private readonly pipeline = createDefaultGenerationPipeline()
   ) {}
 
   async createProject(
@@ -31,13 +33,10 @@ export class GeneratorEngine {
       };
     }
 
-    const files = await this.generateStackFiles(config);
-    files.push(...generateOrmFiles(config, config.projectName));
-    files.push(...generateApiQualityFiles(config, config.projectName));
-    files.push(...generateAuthFiles(config, config.projectName));
-    files.push(...generateRelationSupportFiles(config, config.projectName));
-    files.push(...generateProductionScaffoldFiles(config, config.projectName));
-    files.push(...generateSetupFiles(config, config.projectName));
+    const files = [
+      ...(await this.generateStackFiles(config)),
+      ...(await this.pipeline.run(config, config.projectName))
+    ];
     await this.fileWriter.writeFiles(outputRoot, files, options);
 
     return {
@@ -86,14 +85,21 @@ export class GeneratorEngine {
     return [
       ...(await this.generateStackFiles(frontendConfig)).map((file) => prefixFile(config.projectName, file)),
       ...(await this.generateStackFiles(backendConfig)).map((file) => prefixFile(config.projectName, file)),
-      ...generateOrmFiles(backendConfig, `${config.projectName}/api`),
-      ...generateApiQualityFiles(backendConfig, `${config.projectName}/api`),
-      ...generateAuthFiles(backendConfig, `${config.projectName}/api`),
-      ...generateRelationSupportFiles(backendConfig, `${config.projectName}/api`),
-      ...generateProductionScaffoldFiles(backendConfig, `${config.projectName}/api`),
-      ...generateSetupFiles(config, config.projectName, true)
+      ...(await this.pipeline.run(backendConfig, `${config.projectName}/api`, false, { skip: ["setup"] })),
+      ...(await this.pipeline.run(config, config.projectName, true, { only: ["setup"] }))
     ];
   }
+}
+
+function createDefaultGenerationPipeline(): GenerationPipeline {
+  return new GenerationPipeline([
+    { name: "orm", generate: ({ config, root }) => generateOrmFiles(config, root) },
+    { name: "api-quality", generate: ({ config, root }) => generateApiQualityFiles(config, root) },
+    { name: "auth", generate: ({ config, root }) => generateAuthFiles(config, root) },
+    { name: "relations", generate: ({ config, root }) => generateRelationSupportFiles(config, root) },
+    { name: "production-scaffold", generate: ({ config, root }) => generateProductionScaffoldFiles(config, root) },
+    { name: "setup", generate: ({ config, root, fullstack }) => generateSetupFiles(config, root, fullstack) }
+  ]);
 }
 
 function prefixFile(root: string, file: GeneratedFile): GeneratedFile {
@@ -338,7 +344,7 @@ export interface AuthTokens {
 }
 
 export class JwtService {
-  private readonly secret = process.env.JWT_SECRET ?? "change-me";
+  private readonly secret = requiredJwtSecret();
 
   issue(user: User): AuthTokens {
     return {
@@ -443,6 +449,14 @@ export class RefreshTokenUseCase {
     return this.tokens.issue(user);
   }
 }
+
+function requiredJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is required in production");
+  }
+  return secret ?? "dev-only-change-me";
+}
 `
     },
     {
@@ -469,8 +483,8 @@ export function authMiddleware(tokens = new JwtService()) {
     }
     try {
       response.locals.userId = tokens.verify(token);
-      response.locals.roles = ["user"];
-      response.locals.permissions = ["read"];
+      response.locals.roles = [];
+      response.locals.permissions = [];
       next();
     } catch {
       response.sendStatus(401);
@@ -629,12 +643,16 @@ function expressProductionFiles(config: ProjectConfig, root: string): GeneratedF
 }
 
 export function loadEnvironment(): EnvironmentConfig {
+  if (process.env.APP_ENV === "production" && !process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is required in production");
+  }
+
   return {
     appEnv: process.env.APP_ENV ?? "development",
     port: Number(process.env.PORT ?? process.env.API_PORT ?? 3000),
     databaseUrl: process.env.DATABASE_URL,
     redisUrl: process.env.REDIS_URL,
-    jwtSecret: process.env.JWT_SECRET ?? "change-me",
+    jwtSecret: process.env.JWT_SECRET ?? "dev-only-change-me",
     jwtExpires: process.env.JWT_EXPIRES ?? "15m",
     jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES ?? "7d"
   };
@@ -1027,12 +1045,18 @@ function nestJsProductionFiles(config: ProjectConfig, root: string): GeneratedFi
   jwtSecret: string;
 }
 
-export const environment = (): EnvironmentConfig => ({
-  nodeEnv: process.env.NODE_ENV ?? "development",
-  port: Number(process.env.PORT ?? 3000),
-  databaseUrl: process.env.DATABASE_URL,
-  jwtSecret: process.env.JWT_SECRET ?? "change-me"
-});
+export function environment(): EnvironmentConfig {
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is required in production");
+  }
+
+  return {
+    nodeEnv: process.env.NODE_ENV ?? "development",
+    port: Number(process.env.PORT ?? 3000),
+    databaseUrl: process.env.DATABASE_URL,
+    jwtSecret: process.env.JWT_SECRET ?? "dev-only-change-me"
+  };
+}
 `
     },
     {
@@ -1481,7 +1505,7 @@ function envExample(config: ProjectConfig): string {
     database === "mysql" ? "DATABASE_URL=mysql://arxgen:arxgen@db:3306/arxgen" : undefined,
     database === "mongodb" ? "DATABASE_URL=mongodb://db:27017/arxgen" : undefined,
     config.redis ? "REDIS_URL=redis://redis:6379" : undefined,
-    config.auth === "jwt" ? "JWT_SECRET=change-me" : undefined,
+    config.auth === "jwt" ? "JWT_SECRET=replace-with-a-long-random-secret" : undefined,
     config.auth === "jwt" ? "JWT_EXPIRES=15m" : undefined,
     config.auth === "jwt" ? "JWT_REFRESH_EXPIRES=7d" : undefined
   ].filter(Boolean).join("\n") + "\n";

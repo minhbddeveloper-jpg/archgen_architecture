@@ -20,6 +20,8 @@ export interface StarterDefinition {
     orm?: string[];
     relations?: boolean;
     extendExistingProject?: boolean;
+    schemaUpgrade?: boolean | "partial";
+    productionReady?: boolean;
   };
   crudStyle?: CrudStyle;
 }

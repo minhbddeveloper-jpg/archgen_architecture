@@ -53,7 +53,9 @@ export const starterDefinitions: StarterDefinition[] = [
       auth: ["jwt"],
       orm: ["prisma"],
       relations: true,
-      extendExistingProject: true
+      extendExistingProject: true,
+      schemaUpgrade: true,
+      productionReady: false
     },
     crudStyle: "typescript-express"
   },
@@ -79,7 +81,11 @@ export const starterDefinitions: StarterDefinition[] = [
       crud: true,
       dto: true,
       validation: true,
-      pagination: true
+      pagination: true,
+      orm: ["prisma"],
+      auth: ["jwt"],
+      schemaUpgrade: "partial",
+      productionReady: false
     },
     crudStyle: "typescript-nestjs"
   },
@@ -99,6 +105,16 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/app/infrastructure/repositories",
       "{{projectSlug}}/app/presentation/routers"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      dto: true,
+      validation: true,
+      pagination: true,
+      orm: ["sqlalchemy"],
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "python-fastapi"
   },
   {
@@ -119,6 +135,15 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/infrastructure/repositories",
       "{{projectSlug}}/presentation/views"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      dto: true,
+      validation: true,
+      pagination: true,
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "python-django"
   },
   {
@@ -137,6 +162,13 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/src/main/java/{{packagePath}}/infrastructure/repositories",
       "{{projectSlug}}/src/main/java/{{packagePath}}/presentation/controllers"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      orm: ["jpa"],
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "java-spring"
   },
   {
@@ -155,6 +187,13 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/Infrastructure/Repositories",
       "{{projectSlug}}/Presentation/Controllers"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      orm: ["efcore"],
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "csharp-aspnetcore"
   },
   {
@@ -173,6 +212,13 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/app/Infrastructure/Repositories",
       "{{projectSlug}}/app/Http/Controllers"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      orm: ["eloquent"],
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "php-laravel"
   },
   {
@@ -192,6 +238,13 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/internal/handler",
       "{{projectSlug}}/internal/server"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      orm: ["gorm"],
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "go-gin"
   },
   {
@@ -211,6 +264,12 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/app/infrastructure/repositories",
       "{{projectSlug}}/app/controllers"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "ruby-rails"
   },
   {
@@ -230,6 +289,12 @@ export const starterDefinitions: StarterDefinition[] = [
       "{{projectSlug}}/src/main/kotlin/{{packagePath}}/infrastructure/repositories",
       "{{projectSlug}}/src/main/kotlin/{{packagePath}}/presentation/routes"
     ],
+    capabilities: {
+      entities: true,
+      crud: true,
+      schemaUpgrade: "partial",
+      productionReady: false
+    },
     crudStyle: "kotlin-ktor"
   }
 ];

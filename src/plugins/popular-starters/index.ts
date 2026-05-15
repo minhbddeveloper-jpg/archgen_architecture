@@ -53,6 +53,7 @@ function createStarterPlugin(definition: StarterDefinition, templateRenderer: Te
     name: definition.name,
     language: definition.language,
     framework: definition.framework,
+    capabilities: definition.capabilities,
     supports(config: ProjectConfig): boolean {
       return (
         config.language.toLowerCase() === definition.language &&

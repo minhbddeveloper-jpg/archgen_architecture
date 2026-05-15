@@ -61,7 +61,7 @@ export function createCli(engine: GeneratorEngine, extender: ProjectExtender, pl
 
       if (command === "list" && rest[0] === "plugins") {
         for (const plugin of plugins) {
-          logger.info(`${plugin.name} (${plugin.language}/${plugin.framework})`);
+          logger.info(formatPlugin(plugin));
         }
         return;
       }
@@ -695,6 +695,31 @@ function formatSchemaUpgradeResult(sqlPath: string, result: Awaited<ReturnType<P
   }
 
   return lines.join("\n");
+}
+
+function formatPlugin(plugin: Plugin): string {
+  const capabilities = plugin.capabilities;
+  if (!capabilities) {
+    return `${plugin.name} (${plugin.language}/${plugin.framework})`;
+  }
+
+  return [
+    `${plugin.name} (${plugin.language}/${plugin.framework})`,
+    `  CRUD: ${yesNo(capabilities.crud)}`,
+    `  ORM: ${formatList(capabilities.orm)}`,
+    `  Auth: ${formatList(capabilities.auth)}`,
+    `  Validation: ${Array.isArray(capabilities.validation) ? capabilities.validation.join(", ") : yesNo(capabilities.validation)}`,
+    `  Schema upgrade: ${capabilities.schemaUpgrade === "partial" ? "partial" : yesNo(capabilities.schemaUpgrade)}`,
+    `  Production ready: ${yesNo(capabilities.productionReady)}`
+  ].join("\n");
+}
+
+function formatList(value: string[] | undefined): string {
+  return value?.length ? value.join(", ") : "none";
+}
+
+function yesNo(value: unknown): string {
+  return value ? "yes" : "no";
 }
 
 async function promptCreateOptions(): Promise<CliOptions> {

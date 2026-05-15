@@ -10,6 +10,11 @@ interface TableColumn {
   sqlType: string;
   required: boolean;
   primaryKey: boolean;
+  unique: boolean;
+  defaultValue?: string;
+  length?: number;
+  precision?: number;
+  scale?: number;
 }
 
 interface ForeignKey {
@@ -42,6 +47,7 @@ export function parseSqlSchema(sql: string): ParsedSqlSchema {
       }
 
       if (isTableConstraint(trimmed)) {
+        applyTableConstraint(columns, trimmed);
         continue;
       }
 
@@ -188,8 +194,35 @@ function parseColumn(definition: string): TableColumn | undefined {
     name,
     sqlType: type,
     required: upper.includes("NOT NULL") || upper.includes("PRIMARY KEY"),
-    primaryKey: upper.includes("PRIMARY KEY")
+    primaryKey: upper.includes("PRIMARY KEY"),
+    unique: upper.includes("UNIQUE"),
+    defaultValue: rest.match(/\bdefault\s+([^,\s]+)/i)?.[1],
+    ...parseTypeOptions(type)
   };
+}
+
+function parseTypeOptions(sqlType: string): Pick<TableColumn, "length" | "precision" | "scale"> {
+  const match = sqlType.match(/\(([^)]+)\)/);
+  if (!match) return {};
+  const values = match[1].split(",").map((value) => Number(value.trim())).filter((value) => Number.isFinite(value));
+  if (values.length === 1) return { length: values[0], precision: values[0] };
+  if (values.length >= 2) return { precision: values[0], scale: values[1] };
+  return {};
+}
+
+function applyTableConstraint(columns: TableColumn[], definition: string): void {
+  const uniqueMatch = definition.match(/unique\s*\(([^)]+)\)/i);
+  const indexMatch = definition.match(/(?:index|key)\s+[a-zA-Z_][\w$]*\s*\(([^)]+)\)/i);
+  const names = uniqueMatch?.[1] ?? indexMatch?.[1];
+  if (!names) return;
+
+  for (const rawName of names.split(",")) {
+    const name = normalizeIdentifier(rawName.trim());
+    const column = columns.find((candidate) => candidate.name === name);
+    if (column) {
+      if (uniqueMatch) column.unique = true;
+    }
+  }
 }
 
 function parseTableForeignKey(sourceTable: string, definition: string): ForeignKey | undefined {
@@ -232,7 +265,12 @@ function toEntityField(column: TableColumn): EntityFieldConfig {
   return {
     name: toFieldName(column.name),
     type: mapSqlType(column.sqlType),
-    required: column.required ? undefined : false
+    required: column.required ? undefined : false,
+    unique: column.unique || undefined,
+    defaultValue: column.defaultValue,
+    length: column.length,
+    precision: column.precision,
+    scale: column.scale
   };
 }
 
