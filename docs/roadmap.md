@@ -260,3 +260,24 @@ arxgen-next-work/
         ├── block publish if snapshot test fails
         ├── optionally block publish if e2e fails
         └── require release note for version bump
+
+
+
+about another stack
+v1.5.0
+└── Make Express database-backed and trustworthy
+
+v1.6.0
+└── Promote NestJS to serious beta/stable candidate
+
+v1.7.0
+└── Build TypeScript fullstack path with React
+
+v1.8.0
+└── Add first non-TypeScript stack: FastAPI
+
+v1.9.0
+└── Add first enterprise stack: Spring Boot or ASP.NET Core
+
+v2.0.0
+└── Stable plugin API + serious multi-stack positioning
