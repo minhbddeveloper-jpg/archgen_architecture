@@ -1210,6 +1210,12 @@ ${config.entities?.map((entity) => prismaModel(entity, config)).join("\n\n") ?? 
 
 function prismaModel(entity: EntityConfig, config: ProjectConfig): string {
   const relations = config.relations ?? [];
+  const relationFieldNames = new Set(
+    relations
+      .filter((relation) => relation.source.toLowerCase() === entity.name.toLowerCase())
+      .filter((relation) => relation.kind === "many-to-one" || relation.kind === "one-to-one")
+      .map((relation) => `${camel(relation.target)}Id`)
+  );
   const relationLines = relations.flatMap((relation) => {
     if (relation.source.toLowerCase() !== entity.name.toLowerCase()) {
       return [];
@@ -1237,7 +1243,7 @@ function prismaModel(entity: EntityConfig, config: ProjectConfig): string {
   });
   return `model ${pascal(entity.name)} {
   id String @id @default(uuid())
-${entity.fields.map((field) => `  ${camel(field.name)} ${prismaType(field)}`).join("\n")}
+${entity.fields.filter((field) => !relationFieldNames.has(camel(field.name))).map((field) => `  ${camel(field.name)} ${prismaType(field)}`).join("\n")}
 ${relationLines.join("\n")}
 }`;
 }

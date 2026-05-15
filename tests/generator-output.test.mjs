@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -316,6 +316,128 @@ test("creates a SaaS preset without requiring language and framework flags", () 
     assert.equal(existsSync(join(projectRoot, "prisma/schema.prisma")), true);
     assert.equal(existsSync(join(projectRoot, "docker-compose.yml")), true);
     assert.equal(existsSync(join(projectRoot, "nginx/default.conf")), true);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("generates entities and relations from a SQL schema file", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+  const sqlPath = join(outputRoot, "schema.sql");
+
+  try {
+    writeFileSync(sqlPath, `CREATE TABLE students (
+  id uuid primary key,
+  name varchar(120) not null,
+  email varchar(180),
+  age int
+);
+
+CREATE TABLE courses (
+  id uuid primary key,
+  title text not null,
+  student_id uuid not null,
+  foreign key (student_id) references students(id)
+);
+`, "utf8");
+
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "sql-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--from-sql",
+        sqlPath,
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "sql-api");
+    assert.equal(existsSync(join(projectRoot, "src/domain/entities/Student.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/domain/entities/Course.ts")), true);
+
+    const student = readNormalized(join(projectRoot, "src/domain/entities/Student.ts"));
+    assert.match(student, /name: string/);
+    assert.match(student, /email\?: string/);
+    assert.match(student, /age\?: number/);
+
+    const schema = readNormalized(join(projectRoot, "prisma/schema.prisma"));
+    assert.match(schema, /model Course/);
+    assert.match(schema, /studentId String/);
+    assert.match(schema, /student Student @relation/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("adds entities from a SQL schema file to an existing Express project", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+  const sqlPath = join(outputRoot, "schema.sql");
+
+  try {
+    writeFileSync(sqlPath, `CREATE TABLE teachers (
+  id uuid primary key,
+  full_name varchar(120) not null,
+  active boolean not null
+);
+`, "utf8");
+
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "school-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "school-api");
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "add",
+        "schema",
+        "--from-sql",
+        sqlPath,
+        "--project",
+        projectRoot,
+        "--validation",
+        "zod"
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    assert.equal(existsSync(join(projectRoot, "src/domain/entities/Teacher.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/validation/teacherSchemas.ts")), true);
+
+    const main = readNormalized(join(projectRoot, "src/main.ts"));
+    assert.match(main, /createTeacherRouter/);
+    assert.match(main, /app\.use\("\/teachers", createTeacherRouter\(\)\)/);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }

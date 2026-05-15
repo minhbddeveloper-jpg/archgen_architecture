@@ -3,6 +3,7 @@ import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
 import { GeneratorEngine } from "../core/application/generatorEngine.js";
 import { ProjectExtender } from "../core/application/projectExtender.js";
+import { parseSqlSchema } from "../core/application/sqlSchemaParser.js";
 import { EntityConfig, EntityFieldConfig, FieldType, ProjectConfig, RelationConfig, RelationKind, ValidationProvider } from "../core/domain/projectConfig.js";
 import { Plugin } from "../core/domain/plugin.js";
 import { Logger } from "../shared/logger.js";
@@ -72,15 +73,37 @@ export function createCli(engine: GeneratorEngine, extender: ProjectExtender, pl
 
       if (command === "add") {
         const [target, name, ...addArgs] = rest;
-        if (!target || !name) {
-          throw new Error("Usage: arxgen add <entity|crud|usecase> <name> [--field name:type] [--project <dir>] [--merge] [--force] [--dry-run]");
+        if (!target) {
+          throw new Error("Usage: arxgen add <entity|crud|usecase|schema> <name> [--field name:type] [--project <dir>] [--merge] [--force] [--dry-run]");
         }
-        const options = parseOptions(addArgs);
+        const options = target === "schema" ? parseOptions(rest.slice(1)) : parseOptions(addArgs);
         const projectRoot = stringOption(options, "project") ?? ".";
         const writeOptions = {
           dryRun: booleanOption(options, "dry-run"),
           overwrite: booleanOption(options, "force")
         };
+
+        if (target === "schema") {
+          const sqlPath = requireOption(options, "from-sql");
+          const schema = await parseSqlSchemaFile(sqlPath);
+          const updatedFiles: string[] = [];
+          let filesWritten = 0;
+          for (const entity of schema.entities) {
+            const result = await extender.addEntity(projectRoot, {
+              entity,
+              validation: parseValidation(options),
+              merge: true
+            }, writeOptions);
+            filesWritten += result.filesWritten;
+            updatedFiles.push(...result.updatedFiles);
+          }
+          logger.info(`${writeOptions.dryRun ? "Would add" : "Added"} schema from ${sqlPath}: ${schema.entities.length} entities, ${filesWritten} files${updatedFiles.length ? `, updated ${[...new Set(updatedFiles)].join(", ")}` : ""}`);
+          return;
+        }
+
+        if (!name) {
+          throw new Error("Usage: arxgen add <entity|crud|usecase> <name> [--field name:type] [--project <dir>] [--merge] [--force] [--dry-run]");
+        }
 
         if (target === "entity" || target === "crud") {
           const entity = { name, fields: parseEntityFields(options) };
@@ -160,10 +183,15 @@ function appendOption(options: CliOptions, key: string, value: string): void {
 async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjectRequest> {
   const configPath = stringOption(options, "config");
   const fileConfig = configPath ? await readConfigFile(configPath) : {};
+  const sqlSchema = await parseSqlSchemaOption(options);
   const presetConfig = parsePreset(options);
   const merged = { ...presetConfig, ...fileConfig, ...removeCliOnlyOptions(options) };
   const architecture = merged.architecture ?? "clean";
   const fullstack = parseFullstack(options, fileConfig);
+  const cliEntities = parseCliEntities(options);
+  const configEntities = validateEntities(merged.entities);
+  const entities = mergeEntities(cliEntities ?? configEntities, sqlSchema?.entities);
+  const relations = mergeRelations(parseRelations(merged), sqlSchema?.relations);
 
   if (architecture !== "clean" && architecture !== "hexagonal" && architecture !== "mvc") {
     throw new Error("architecture must be one of: clean, hexagonal, mvc");
@@ -182,15 +210,28 @@ async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjec
       orm: optionalString(merged, "orm"),
       auth: optionalString(merged, "auth"),
       validation: parseValidation(merged),
-      relations: parseRelations(merged),
+      relations,
       docker: optionalBoolean(merged, "docker") ?? booleanOption(options, "docker"),
       nginx: optionalBoolean(merged, "nginx") ?? booleanOption(options, "nginx"),
       redis: optionalBoolean(merged, "redis") ?? booleanOption(options, "redis"),
       fullstack,
-      entities: parseCliEntities(options) ?? validateEntities(merged.entities)
+      entities
     },
     outputRoot: stringOption(options, "out") ?? optionalString(fileConfig, "out") ?? optionalString(fileConfig, "outputDir") ?? "."
   };
+}
+
+async function parseSqlSchemaOption(options: CliOptions): Promise<ReturnType<typeof parseSqlSchema> | undefined> {
+  const sqlPath = stringOption(options, "from-sql");
+  if (!sqlPath) {
+    return undefined;
+  }
+  return parseSqlSchemaFile(sqlPath);
+}
+
+async function parseSqlSchemaFile(path: string): Promise<ReturnType<typeof parseSqlSchema>> {
+  const raw = await readFile(resolve(path), "utf8");
+  return parseSqlSchema(raw);
 }
 
 async function readConfigFile(path: string): Promise<Record<string, unknown>> {
@@ -205,7 +246,7 @@ async function readConfigFile(path: string): Promise<Record<string, unknown>> {
 }
 
 function removeCliOnlyOptions(options: CliOptions): Record<string, CliValue> {
-  const { config: _config, out: _out, project: _project, preset: _preset, force: _force, merge: _merge, "save-config": _saveConfig, "dry-run": _dryRun, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
+  const { config: _config, out: _out, project: _project, preset: _preset, force: _force, merge: _merge, "save-config": _saveConfig, "dry-run": _dryRun, "from-sql": _fromSql, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
   return projectOptions;
 }
 
@@ -407,6 +448,29 @@ function validateEntities(value: unknown): EntityConfig[] | undefined {
   });
 }
 
+function mergeEntities(base: EntityConfig[] | undefined, imported: EntityConfig[] | undefined): EntityConfig[] | undefined {
+  if (!base?.length && !imported?.length) {
+    return undefined;
+  }
+
+  const result = new Map<string, EntityConfig>();
+  for (const entity of [...(base ?? []), ...(imported ?? [])]) {
+    const current = result.get(entity.name);
+    if (!current) {
+      result.set(entity.name, { ...entity, fields: [...entity.fields] });
+      continue;
+    }
+
+    const fields = new Map(current.fields.map((field) => [field.name, field]));
+    for (const field of entity.fields) {
+      fields.set(field.name, field);
+    }
+    result.set(entity.name, { ...current, fields: [...fields.values()] });
+  }
+
+  return [...result.values()];
+}
+
 function parseCliEntities(options: CliOptions): EntityConfig[] | undefined {
   const entityNames = stringListOption(options, "entity");
   const fieldSpecs = stringListOption(options, "field");
@@ -552,6 +616,18 @@ function parseRelations(options: Record<string, unknown>): RelationConfig[] | un
   });
 }
 
+function mergeRelations(base: RelationConfig[] | undefined, imported: RelationConfig[] | undefined): RelationConfig[] | undefined {
+  if (!base?.length && !imported?.length) {
+    return undefined;
+  }
+
+  const result = new Map<string, RelationConfig>();
+  for (const relation of [...(base ?? []), ...(imported ?? [])]) {
+    result.set(`${relation.source}.${relation.target}:${relation.kind}`, relation);
+  }
+  return [...result.values()];
+}
+
 function isRelationKind(value: unknown): value is RelationKind {
   return value === "one-to-one" || value === "one-to-many" || value === "many-to-one" || value === "many-to-many" || value === "polymorphic" || value === "tree";
 }
@@ -564,10 +640,11 @@ function printHelp(logger: Logger): void {
   logger.info(`arxgen
 
 Commands:
-  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--preset saas] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--from-sql schema.sql] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--preset saas] [--out <dir>] [--force] [--dry-run]
   create --name <name> --frontend react --backend express [--database postgres] [--redis] [--docker] [--nginx] [--out <dir>]
   add entity <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add crud <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
+  add schema --from-sql schema.sql [--project <dir>] [--validation zod] [--force] [--dry-run]
   add usecase <name> [--project <dir>] [--force] [--dry-run]
   wizard
   list plugins

@@ -6,6 +6,7 @@ It can generate:
 
 - Frontend, backend, and fullstack project starters
 - Entity, CRUD, repository, controller, route, DTO, validation, and use-case files
+- Entities and relations from an existing SQL schema file
 - Environment config, logging, exception handling, OpenAPI, Docker, Nginx, Redis, database, ORM, JWT auth, RBAC/permission, migration, seeder, and CI scaffolding where supported
 - Additional modules for an existing generated TypeScript Express project with `add` commands
 
@@ -155,6 +156,27 @@ arxgen create \
 
 This also generates production scaffolding for environment config, structured logging, exception handling, OpenAPI JSON, role/permission middleware, query helpers, Prisma migration/seed placeholders, unit/integration test placeholders, and a GitHub Actions CI workflow.
 
+Generate entities from an existing SQL schema file:
+
+```bash
+arxgen create \
+  --name school-api \
+  --language typescript \
+  --framework express \
+  --database postgres \
+  --orm prisma \
+  --from-sql ./schema.sql \
+  --out ./generated
+```
+
+Supported SQL import scope:
+
+- `CREATE TABLE`
+- Common SQL column types such as `varchar`, `text`, `int`, `decimal`, `boolean`, `uuid`, `date`, and `timestamp`
+- `NOT NULL` detection for required fields
+- Primary key `id` detection so generated entities do not duplicate the default `id`
+- Foreign keys mapped to `many-to-one` relations
+
 ## Production Scaffold Coverage
 
 | Capability | TypeScript Express | TypeScript NestJS |
@@ -205,6 +227,15 @@ arxgen add crud teacher \
 arxgen add usecase CreateEnrollment
 ```
 
+Add entities from a SQL schema file to an existing generated Express project:
+
+```bash
+arxgen add schema \
+  --from-sql ./schema.sql \
+  --project ./generated/student-api \
+  --validation zod
+```
+
 Useful flags:
 
 | Flag | Description |
@@ -225,6 +256,7 @@ Useful flags:
 | `--backend <stack>` | Fullstack backend alias, for example `express`, `fastapi`, `spring`, `aspnetcore`. |
 | `--entity <name>` | Adds a CRUD entity. Can be repeated. |
 | `--field <spec>` | Adds an entity field. Can be repeated. |
+| `--from-sql <file>` | Imports entities and relations from a SQL schema file. |
 | `--database <type>` | Adds database setup. Supported setup values: `postgres`, `mysql`, `mongodb`. |
 | `--orm <orm>` | Generates ORM artifacts when supported. |
 | `--validation <provider>` | Generates validation artifacts. Values: `zod`, `class-validator`, `joi`. |
