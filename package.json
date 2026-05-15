@@ -1,5 +1,5 @@
 {
-  "name": "@minhbddeveloper-jpg/archgen",
+  "name": "arxgen",
   "version": "0.1.0",
   "description": "Multi-language Clean Architecture project generator.",
   "type": "module",
