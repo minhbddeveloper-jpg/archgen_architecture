@@ -35,6 +35,7 @@ export class GeneratorEngine {
     files.push(...generateOrmFiles(config, config.projectName));
     files.push(...generateApiQualityFiles(config, config.projectName));
     files.push(...generateAuthFiles(config, config.projectName));
+    files.push(...generateProductionScaffoldFiles(config, config.projectName));
     files.push(...generateSetupFiles(config, config.projectName));
     await this.fileWriter.writeFiles(outputRoot, files, options);
 
@@ -87,6 +88,7 @@ export class GeneratorEngine {
       ...generateOrmFiles(backendConfig, `${config.projectName}/api`),
       ...generateApiQualityFiles(backendConfig, `${config.projectName}/api`),
       ...generateAuthFiles(backendConfig, `${config.projectName}/api`),
+      ...generateProductionScaffoldFiles(backendConfig, `${config.projectName}/api`),
       ...generateSetupFiles(config, config.projectName, true)
     ];
   }
@@ -434,6 +436,596 @@ export function createAuthRouter(): Router {
 `
     }
   ];
+}
+
+function generateProductionScaffoldFiles(config: ProjectConfig, root: string): GeneratedFile[] {
+  if (config.language !== "typescript") {
+    return [];
+  }
+
+  if (config.framework === "express") {
+    return expressProductionFiles(config, root);
+  }
+
+  if (config.framework === "nestjs") {
+    return nestJsProductionFiles(config, root);
+  }
+
+  return [];
+}
+
+function expressProductionFiles(config: ProjectConfig, root: string): GeneratedFile[] {
+  return [
+    {
+      path: `${root}/src/shared/config/environment.ts`,
+      content: `export interface EnvironmentConfig {
+  appEnv: string;
+  port: number;
+  databaseUrl?: string;
+  redisUrl?: string;
+  jwtSecret: string;
+  jwtExpires: string;
+  jwtRefreshExpires: string;
+}
+
+export function loadEnvironment(): EnvironmentConfig {
+  return {
+    appEnv: process.env.APP_ENV ?? "development",
+    port: Number(process.env.PORT ?? process.env.API_PORT ?? 3000),
+    databaseUrl: process.env.DATABASE_URL,
+    redisUrl: process.env.REDIS_URL,
+    jwtSecret: process.env.JWT_SECRET ?? "change-me",
+    jwtExpires: process.env.JWT_EXPIRES ?? "15m",
+    jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES ?? "7d"
+  };
+}
+`
+    },
+    {
+      path: `${root}/src/shared/logger.ts`,
+      content: `type LogContext = Record<string, unknown>;
+
+export const logger = {
+  info(message: string, context: LogContext = {}): void {
+    console.log(JSON.stringify({ level: "info", message, ...context }));
+  },
+  warn(message: string, context: LogContext = {}): void {
+    console.warn(JSON.stringify({ level: "warn", message, ...context }));
+  },
+  error(message: string, context: LogContext = {}): void {
+    console.error(JSON.stringify({ level: "error", message, ...context }));
+  }
+};
+`
+    },
+    {
+      path: `${root}/src/shared/errors/appError.ts`,
+      content: `export class AppError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode = 500,
+    readonly code = "APP_ERROR",
+    readonly details?: unknown
+  ) {
+    super(message);
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/shared/query/queryOptions.ts`,
+      content: `export interface QueryOptions {
+  page: number;
+  limit: number;
+  q?: string;
+  sort?: string;
+  filters: Record<string, string>;
+}
+
+export function parseQueryOptions(query: Record<string, unknown>): QueryOptions {
+  const filters = Object.fromEntries(
+    Object.entries(query)
+      .filter(([key, value]) => key.startsWith("filter.") && typeof value === "string")
+      .map(([key, value]) => [key.slice("filter.".length), value as string])
+  );
+
+  return {
+    page: Math.max(Number(query.page ?? 1), 1),
+    limit: Math.min(Math.max(Number(query.limit ?? 10), 1), 100),
+    q: typeof query.q === "string" ? query.q : undefined,
+    sort: typeof query.sort === "string" ? query.sort : undefined,
+    filters
+  };
+}
+
+export function applyQueryOptions<T extends Record<string, unknown>>(records: T[], options: QueryOptions): T[] {
+  const searched = options.q
+    ? records.filter((record) => JSON.stringify(record).toLowerCase().includes(options.q!.toLowerCase()))
+    : records;
+
+  const filtered = searched.filter((record) => {
+    return Object.entries(options.filters).every(([key, value]) => String(record[key] ?? "") === value);
+  });
+
+  const sorted = options.sort
+    ? [...filtered].sort((left, right) => String(left[options.sort!] ?? "").localeCompare(String(right[options.sort!] ?? "")))
+    : filtered;
+
+  const start = (options.page - 1) * options.limit;
+  return sorted.slice(start, start + options.limit);
+}
+`
+    },
+    {
+      path: `${root}/src/domain/auth/accessControl.ts`,
+      content: `export type Role = "admin" | "user";
+export type Permission = "read" | "create" | "update" | "delete" | "manage";
+
+export interface AuthPrincipal {
+  id: string;
+  roles: Role[];
+  permissions: Permission[];
+}
+
+export function hasRole(principal: AuthPrincipal, role: Role): boolean {
+  return principal.roles.includes(role);
+}
+
+export function hasPermission(principal: AuthPrincipal, permission: Permission): boolean {
+  return principal.permissions.includes(permission) || principal.permissions.includes("manage");
+}
+`
+    },
+    {
+      path: `${root}/src/presentation/middleware/errorHandler.ts`,
+      content: `import { NextFunction, Request, Response } from "express";
+import { AppError } from "../../shared/errors/appError.js";
+import { logger } from "../../shared/logger.js";
+
+export function notFoundHandler(request: Request, response: Response): void {
+  response.status(404).json({
+    success: false,
+    message: \`Route \${request.method} \${request.path} not found\`
+  });
+}
+
+export function errorHandler(error: unknown, _request: Request, response: Response, _next: NextFunction): void {
+  if (error instanceof AppError) {
+    response.status(error.statusCode).json({
+      success: false,
+      message: error.message,
+      code: error.code,
+      details: error.details
+    });
+    return;
+  }
+
+  logger.error("Unhandled error", { error: error instanceof Error ? error.message : String(error) });
+  response.status(500).json({
+    success: false,
+    message: "Internal server error"
+  });
+}
+`
+    },
+    {
+      path: `${root}/src/presentation/middleware/requestLogger.ts`,
+      content: `import { NextFunction, Request, Response } from "express";
+import { logger } from "../../shared/logger.js";
+
+export function requestLogger(request: Request, response: Response, next: NextFunction): void {
+  const startedAt = Date.now();
+  response.on("finish", () => {
+    logger.info("http_request", {
+      method: request.method,
+      path: request.path,
+      statusCode: response.statusCode,
+      durationMs: Date.now() - startedAt
+    });
+  });
+  next();
+}
+`
+    },
+    {
+      path: `${root}/src/presentation/middleware/permissionMiddleware.ts`,
+      content: `import { NextFunction, Request, Response } from "express";
+import { Permission, Role } from "../../domain/auth/accessControl.js";
+
+export function requireRole(role: Role) {
+  return (_request: Request, response: Response, next: NextFunction) => {
+    const roles = (response.locals.roles ?? []) as string[];
+    if (!roles.includes(role)) {
+      response.sendStatus(403);
+      return;
+    }
+    next();
+  };
+}
+
+export function requirePermission(permission: Permission) {
+  return (_request: Request, response: Response, next: NextFunction) => {
+    const permissions = (response.locals.permissions ?? []) as string[];
+    if (!permissions.includes(permission) && !permissions.includes("manage")) {
+      response.sendStatus(403);
+      return;
+    }
+    next();
+  };
+}
+`
+    },
+    {
+      path: `${root}/src/presentation/openapi/openapiDocument.ts`,
+      content: `export const openApiDocument = {
+  openapi: "3.0.3",
+  info: {
+    title: "${config.projectName}",
+    version: "0.1.0"
+  },
+  paths: {
+    "/health": {
+      get: {
+        responses: {
+          "200": {
+            description: "Service health"
+          }
+        }
+      }
+    }
+  }
+};
+`
+    },
+    {
+      path: `${root}/src/presentation/routes/openApiRoutes.ts`,
+      content: `import { Router } from "express";
+import { openApiDocument } from "../openapi/openapiDocument.js";
+
+export function createOpenApiRouter(): Router {
+  const router = Router();
+  router.get("/openapi.json", (_request, response) => response.json(openApiDocument));
+  return router;
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/events/eventBus.ts`,
+      content: `export type EventHandler<TEvent> = (event: TEvent) => void | Promise<void>;
+
+export class EventBus {
+  private readonly handlers = new Map<string, EventHandler<unknown>[]>();
+
+  subscribe<TEvent>(eventName: string, handler: EventHandler<TEvent>): void {
+    const handlers = this.handlers.get(eventName) ?? [];
+    handlers.push(handler as EventHandler<unknown>);
+    this.handlers.set(eventName, handlers);
+  }
+
+  async publish<TEvent>(eventName: string, event: TEvent): Promise<void> {
+    const handlers = this.handlers.get(eventName) ?? [];
+    await Promise.all(handlers.map((handler) => handler(event)));
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/cache/redisCache.ts`,
+      content: `export interface CacheStore {
+  get(key: string): Promise<string | undefined>;
+  set(key: string, value: string, ttlSeconds?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+export class InMemoryCacheStore implements CacheStore {
+  private readonly values = new Map<string, string>();
+
+  async get(key: string): Promise<string | undefined> {
+    return this.values.get(key);
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    this.values.set(key, value);
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key);
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/queue/taskQueue.ts`,
+      content: `export interface TaskQueue {
+  enqueue(name: string, payload: unknown): Promise<void>;
+}
+
+export class InMemoryTaskQueue implements TaskQueue {
+  readonly tasks: Array<{ name: string; payload: unknown }> = [];
+
+  async enqueue(name: string, payload: unknown): Promise<void> {
+    this.tasks.push({ name, payload });
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/presentation/websocket/websocketServer.ts`,
+      content: `export function registerWebSocketServer(): void {
+  // Add ws or socket.io integration here when realtime features are needed.
+}
+`
+    },
+    {
+      path: `${root}/src/presentation/uploads/uploadMiddleware.ts`,
+      content: `import { NextFunction, Request, Response } from "express";
+
+export function fileUploadPlaceholder(_request: Request, _response: Response, next: NextFunction): void {
+  // Add multer or busboy integration here when file uploads are needed.
+  next();
+}
+`
+    },
+    {
+      path: `${root}/tests/unit/generated.test.ts`,
+      content: `import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+
+describe("generated unit test", () => {
+  it("keeps the test runner wired", () => {
+    assert.equal(true, true);
+  });
+});
+`
+    },
+    {
+      path: `${root}/tests/integration/http.test.ts`,
+      content: `import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+
+describe("generated integration test", () => {
+  it("reserves a place for HTTP integration tests", () => {
+    assert.ok("integration");
+  });
+});
+`
+    },
+    {
+      path: `${root}/.github/workflows/ci.yml`,
+      content: generatedCiWorkflow()
+    },
+    {
+      path: `${root}/.prettierrc`,
+      content: `{
+  "printWidth": 120,
+  "semi": true,
+  "singleQuote": false
+}
+`
+    },
+    {
+      path: `${root}/.eslintrc.cjs`,
+      content: `module.exports = {
+  root: true,
+  parserOptions: {
+    ecmaVersion: "latest",
+    sourceType: "module"
+  },
+  env: {
+    es2022: true,
+    node: true
+  }
+};
+`
+    },
+    {
+      path: `${root}/.lintstagedrc.json`,
+      content: `{
+  "*.{ts,tsx,js,json,md}": [
+    "prettier --write"
+  ]
+}
+`
+    },
+    ...(config.orm === "prisma" ? prismaOperationalFiles(root) : [])
+  ];
+}
+
+function prismaOperationalFiles(root: string): GeneratedFile[] {
+  return [
+    {
+      path: `${root}/prisma/migrations/README.md`,
+      content: `# Prisma migrations
+
+Create migrations with:
+
+\`\`\`bash
+npx prisma migrate dev --name init
+\`\`\`
+`
+    },
+    {
+      path: `${root}/prisma/seed.ts`,
+      content: `async function main(): Promise<void> {
+  console.log("Seed placeholder: add initial records here.");
+}
+
+void main();
+`
+    }
+  ];
+}
+
+function nestJsProductionFiles(config: ProjectConfig, root: string): GeneratedFile[] {
+  return [
+    {
+      path: `${root}/src/common/config/environment.ts`,
+      content: `export interface EnvironmentConfig {
+  nodeEnv: string;
+  port: number;
+  databaseUrl?: string;
+  jwtSecret: string;
+}
+
+export const environment = (): EnvironmentConfig => ({
+  nodeEnv: process.env.NODE_ENV ?? "development",
+  port: Number(process.env.PORT ?? 3000),
+  databaseUrl: process.env.DATABASE_URL,
+  jwtSecret: process.env.JWT_SECRET ?? "change-me"
+});
+`
+    },
+    {
+      path: `${root}/src/common/filters/http-exception.filter.ts`,
+      content: `import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from "@nestjs/common";
+
+@Catch()
+export class HttpExceptionFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const response = host.switchToHttp().getResponse();
+    const status = exception instanceof HttpException ? exception.getStatus() : 500;
+    response.status(status).json({
+      success: false,
+      message: exception instanceof Error ? exception.message : "Internal server error"
+    });
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/common/interceptors/response.interceptor.ts`,
+      content: `import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from "@nestjs/common";
+import { map, Observable } from "rxjs";
+
+@Injectable()
+export class ResponseInterceptor implements NestInterceptor {
+  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    return next.handle().pipe(map((data) => ({ success: true, data })));
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/common/logging/app-logger.service.ts`,
+      content: `import { ConsoleLogger, Injectable } from "@nestjs/common";
+
+@Injectable()
+export class AppLogger extends ConsoleLogger {}
+`
+    },
+    {
+      path: `${root}/src/auth/roles.decorator.ts`,
+      content: `import { SetMetadata } from "@nestjs/common";
+
+export const ROLES_KEY = "roles";
+export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
+`
+    },
+    {
+      path: `${root}/src/auth/permissions.decorator.ts`,
+      content: `import { SetMetadata } from "@nestjs/common";
+
+export const PERMISSIONS_KEY = "permissions";
+export const Permissions = (...permissions: string[]) => SetMetadata(PERMISSIONS_KEY, permissions);
+`
+    },
+    {
+      path: `${root}/src/auth/jwt-auth.guard.ts`,
+      content: `import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+
+@Injectable()
+export class JwtAuthGuard implements CanActivate {
+  canActivate(_context: ExecutionContext): boolean {
+    return true;
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/auth/permissions.guard.ts`,
+      content: `import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { PERMISSIONS_KEY } from "./permissions.decorator";
+
+@Injectable()
+export class PermissionsGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const required = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass()
+    ]);
+    return !required?.length;
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/auth/auth.module.ts`,
+      content: `import { Module } from "@nestjs/common";
+
+@Module({})
+export class AuthModule {}
+`
+    },
+    {
+      path: `${root}/src/database/prisma.service.ts`,
+      content: `export class PrismaService {
+  transaction<T>(callback: () => Promise<T>): Promise<T> {
+    return callback();
+  }
+}
+`
+    },
+    {
+      path: `${root}/test/app.e2e-spec.ts`,
+      content: `import test from "node:test";
+import assert from "node:assert/strict";
+
+test("${config.projectName} e2e wiring", () => {
+  assert.equal(true, true);
+});
+`
+    },
+    {
+      path: `${root}/test/repository.mock.spec.ts`,
+      content: `import test from "node:test";
+import assert from "node:assert/strict";
+
+test("mocked repository wiring", () => {
+  assert.ok("repository mock");
+});
+`
+    },
+    {
+      path: `${root}/.github/workflows/ci.yml`,
+      content: generatedCiWorkflow()
+    },
+    ...(config.orm === "prisma" ? prismaOperationalFiles(root) : [])
+  ];
+}
+
+function generatedCiWorkflow(): string {
+  return `name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+`;
 }
 
 function prismaFiles(config: ProjectConfig, root: string): GeneratedFile[] {

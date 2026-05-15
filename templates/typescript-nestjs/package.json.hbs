@@ -6,7 +6,10 @@
   "scripts": {
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "build": "nest build"
+    "build": "nest build",
+    "test": "node --import tsx --test test/**/*.ts",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@nestjs/common": "^{{frameworkVersion}}",
@@ -22,6 +25,9 @@
   "devDependencies": {
     "@nestjs/cli": "^{{frameworkVersion}}",
     "@types/node": "^{{nodeTypesVersion}}",
+    "eslint": "^9.0.0",
+    "prettier": "^3.2.5",
+    "tsx": "^4.7.1",
     "typescript": "^{{languageVersion}}"
   }
 }

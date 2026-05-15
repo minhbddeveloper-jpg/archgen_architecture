@@ -1,4 +1,9 @@
 import express from "express";
+import { loadEnvironment } from "./shared/config/environment.js";
+import { logger } from "./shared/logger.js";
+import { errorHandler, notFoundHandler } from "./presentation/middleware/errorHandler.js";
+import { requestLogger } from "./presentation/middleware/requestLogger.js";
+import { createOpenApiRouter } from "./presentation/routes/openApiRoutes.js";
 {{#if auth}}
 import { createAuthRouter } from "./presentation/routes/authRoutes.js";
 {{/if}}
@@ -7,14 +12,16 @@ import { create{{className}}Router } from "./presentation/routes/{{camelName}}Ro
 {{/each}}
 
 const app = express();
-const port = Number(process.env.PORT ?? 3000);
+const environment = loadEnvironment();
 
 app.use(express.json());
+app.use(requestLogger);
 
 app.get("/health", (_request, response) => {
   response.json({ status: "ok", service: "{{projectSlug}}" });
 });
 
+app.use(createOpenApiRouter());
 {{#if auth}}
 app.use("/auth", createAuthRouter());
 {{/if}}
@@ -22,6 +29,9 @@ app.use("/auth", createAuthRouter());
 app.use("/{{routeName}}", create{{className}}Router());
 {{/each}}
 
-app.listen(port, () => {
-  console.log(`{{projectName}} listening on port ${port}`);
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+app.listen(environment.port, () => {
+  logger.info("server_started", { service: "{{projectName}}", port: environment.port });
 });

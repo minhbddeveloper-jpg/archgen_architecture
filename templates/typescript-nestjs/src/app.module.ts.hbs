@@ -1,12 +1,15 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { environment } from "./common/config/environment";
+import { AuthModule } from "./auth/auth.module";
 {{#each entities}}
 import { {{className}}Module } from "./modules/{{routeName}}/{{routeName}}.module";
 {{/each}}
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }){{#each entities}},
+    ConfigModule.forRoot({ isGlobal: true, load: [environment] }),
+    AuthModule{{#each entities}},
     {{className}}Module{{/each}}
   ]
 })

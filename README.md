@@ -6,7 +6,7 @@ It can generate:
 
 - Frontend, backend, and fullstack project starters
 - Entity, CRUD, repository, controller, route, DTO, validation, and use-case files
-- Docker, Nginx, Redis, database, ORM, JWT auth, and relation scaffolding where supported
+- Environment config, logging, exception handling, OpenAPI, Docker, Nginx, Redis, database, ORM, JWT auth, RBAC/permission, migration, seeder, and CI scaffolding where supported
 - Additional modules for an existing generated TypeScript Express project with `add` commands
 
 ## Installation
@@ -152,6 +152,31 @@ arxgen create \
   --auth jwt \
   --out ./generated
 ```
+
+This also generates production scaffolding for environment config, structured logging, exception handling, OpenAPI JSON, role/permission middleware, query helpers, Prisma migration/seed placeholders, unit/integration test placeholders, and a GitHub Actions CI workflow.
+
+## Production Scaffold Coverage
+
+| Capability | TypeScript Express | TypeScript NestJS |
+| --- | --- | --- |
+| Clean Architecture layout | Yes | Yes |
+| DTO | Yes | Yes |
+| Validation | Zod/Joi/class-validator scaffold | class-validator |
+| Pagination | Yes | Yes |
+| Filter/search/sort | Query helper | Query DTO scaffold |
+| CRUD generator | Yes | Yes |
+| Auth JWT | Yes | Guard scaffold |
+| Role/permission | Middleware | Decorators and guard |
+| Swagger/OpenAPI | OpenAPI JSON route | Swagger module/decorators |
+| Environment config | Yes | Yes |
+| Docker | Yes with `--docker` | Yes with `--docker` |
+| CI/CD template | Yes | Yes |
+| Logging | Structured logger | Logger service |
+| Exception handling | Error middleware | Exception filter |
+| Database migration | Prisma placeholder | Prisma placeholder when selected |
+| Seeder | Prisma seed placeholder | Prisma seed placeholder when selected |
+| Unit test | Placeholder | Placeholder |
+| Integration/e2e test | Placeholder | Placeholder |
 
 Use the interactive wizard:
 

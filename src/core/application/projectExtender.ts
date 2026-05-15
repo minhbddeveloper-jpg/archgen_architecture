@@ -172,8 +172,11 @@ async function registerTypeScriptExpressRoute(root: string, entity: EntityConfig
 
   const hasRouteRegistration = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => call.getText() === appUseText);
   if (!hasRouteRegistration) {
-    const listenStatement = sourceFile.getStatements().find((statement) => statement.getText().startsWith("app.listen("));
-    const insertionIndex = listenStatement ? sourceFile.getStatements().indexOf(listenStatement) : sourceFile.getStatements().length;
+    const statements = sourceFile.getStatements();
+    const notFoundStatement = statements.find((statement) => statement.getText().startsWith("app.use(notFoundHandler"));
+    const listenStatement = statements.find((statement) => statement.getText().startsWith("app.listen("));
+    const anchorStatement = notFoundStatement ?? listenStatement;
+    const insertionIndex = anchorStatement ? statements.indexOf(anchorStatement) : statements.length;
     sourceFile.insertStatements(insertionIndex, appUseText);
   }
 

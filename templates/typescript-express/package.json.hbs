@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "build": "tsc",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "prepare": "husky"
   },
   "dependencies": {
     "express": "^{{frameworkVersion}}"{{#if orm}},
@@ -23,6 +27,10 @@
     {{/if}}
     "@types/express": "^{{expressTypesVersion}}",
     "@types/node": "^{{nodeTypesVersion}}",
+    "eslint": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.2.5",
     "tsx": "^{{tsxVersion}}",
     "typescript": "^{{languageVersion}}"{{#if orm}},
     "prisma": "^5.20.0"{{/if}}

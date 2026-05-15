@@ -97,9 +97,17 @@ test("generates setup and ORM artifacts when requested", () => {
 
     const projectRoot = join(outputRoot, "student-api");
     assert.equal(existsSync(join(projectRoot, "prisma/schema.prisma")), true);
+    assert.equal(existsSync(join(projectRoot, "prisma/migrations/README.md")), true);
+    assert.equal(existsSync(join(projectRoot, "prisma/seed.ts")), true);
     assert.equal(existsSync(join(projectRoot, "docker-compose.yml")), true);
     assert.equal(existsSync(join(projectRoot, ".env.example")), true);
     assert.equal(existsSync(join(projectRoot, "nginx/default.conf")), true);
+    assert.equal(existsSync(join(projectRoot, ".github/workflows/ci.yml")), true);
+    assert.equal(existsSync(join(projectRoot, "src/shared/config/environment.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/middleware/errorHandler.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/routes/openApiRoutes.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "tests/unit/generated.test.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "tests/integration/http.test.ts")), true);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }
@@ -244,6 +252,10 @@ test("generates NestJS clean architecture module output", () => {
     assert.equal(existsSync(join(projectRoot, "src/modules/students/students.module.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/modules/students/presentation/students.controller.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/modules/students/application/ports/studentRepository.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/common/filters/http-exception.filter.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/common/interceptors/response.interceptor.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/auth/permissions.guard.ts")), true);
+    assert.equal(existsSync(join(projectRoot, ".github/workflows/ci.yml")), true);
 
     const main = readNormalized(join(projectRoot, "src/main.ts"));
     assert.match(main, /SwaggerModule/);

@@ -6,9 +6,30 @@ Current implementation status:
 
 - `arxgen add entity`, `arxgen add crud`, and `arxgen add usecase` are available for generated TypeScript Express projects.
 - TypeScript Express generation supports DTO artifacts, validation schema artifacts, JWT auth scaffolding, pagination DTOs, standard API response helpers, and Prisma relation metadata.
-- NestJS starter generation is available with module, controller, service, provider, Swagger, config, and validation pipe scaffolding.
+- TypeScript Express also includes production scaffolds for environment config, logging, exception handling, OpenAPI JSON, role/permission middleware, query helpers, Prisma migration/seed placeholders, generated test placeholders, and CI workflow.
+- NestJS starter generation is available with module, controller, service, repository provider, DTOs, validation, pagination, Swagger, config, exception filter, response interceptor, auth/permission guard scaffolds, generated test placeholders, and CI workflow.
 - `arxgen wizard` provides a basic interactive terminal flow.
-- Multi-framework AST merge support, full RBAC, refresh token persistence, and advanced relation types remain future work.
+- Multi-framework AST merge support, full RBAC persistence, refresh token persistence, advanced relation types, and deep production scaffolding for non-TypeScript stacks remain future work.
+
+## Current Roadmap Boundaries
+
+Implemented deeply:
+
+- TypeScript Express
+- TypeScript NestJS
+
+Implemented as starter-level CRUD/ORM scaffolding and planned for deeper production support:
+
+- FastAPI
+- Django
+- Spring Boot
+- ASP.NET Core
+- Laravel
+- Go Gin
+- Ruby on Rails
+- Ktor
+
+The sections below describe the intended production-grade direction for each stack. Items not listed in the current implementation status should be treated as roadmap work.
 
 ## 1. Add Commands for Existing Projects
 

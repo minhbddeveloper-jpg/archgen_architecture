@@ -1,17 +1,27 @@
 import express from "express";
+import { loadEnvironment } from "./shared/config/environment.js";
+import { logger } from "./shared/logger.js";
+import { errorHandler, notFoundHandler } from "./presentation/middleware/errorHandler.js";
+import { requestLogger } from "./presentation/middleware/requestLogger.js";
+import { createOpenApiRouter } from "./presentation/routes/openApiRoutes.js";
 import { createStudentRouter } from "./presentation/routes/studentRoutes.js";
 
 const app = express();
-const port = Number(process.env.PORT ?? 3000);
+const environment = loadEnvironment();
 
 app.use(express.json());
+app.use(requestLogger);
 
 app.get("/health", (_request, response) => {
   response.json({ status: "ok", service: "school-api" });
 });
+
+app.use(createOpenApiRouter());
 app.use("/students", createStudentRouter());
 
+app.use(notFoundHandler);
+app.use(errorHandler);
 
-app.listen(port, () => {
-  console.log(`school-api listening on port ${port}`);
+app.listen(environment.port, () => {
+  logger.info("server_started", { service: "school-api", port: environment.port });
 });
