@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Project, QuoteKind, SyntaxKind } from "ts-morph";
 import { GeneratedFile } from "../domain/generatedFile.js";
@@ -35,6 +35,11 @@ export class ProjectExtender {
   async addEntity(projectRoot: string, request: AddEntityRequest, options: WriteFilesOptions = {}): Promise<ExtendProjectResult> {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
+    const existingEntities = await detectExistingEntities(root);
+    const className = toPascalCase(request.entity.name);
+    if (existingEntities.includes(className) && !options.overwrite) {
+      throw new Error(`${className} already exists. Use --force to overwrite generated files or choose a different entity name.`);
+    }
     const files = await filterExistingSharedFiles(root, typescriptExpressEntityFiles(request.entity, request.validation), options);
     await this.fileWriter.writeFiles(root, files, options);
 
@@ -49,6 +54,14 @@ export class ProjectExtender {
         if (updatedPackageJson) {
           updatedFiles.push("package.json");
         }
+      }
+      const updatedPrismaSchema = await updatePrismaSchema(root, request.entity, Boolean(options.dryRun));
+      if (updatedPrismaSchema) {
+        updatedFiles.push("prisma/schema.prisma");
+      }
+      const updatedContainer = await updateContainer(root, request.entity, Boolean(options.dryRun));
+      if (updatedContainer) {
+        updatedFiles.push("src/infrastructure/container.ts");
       }
     }
 
@@ -146,6 +159,74 @@ async function detectProject(root: string): Promise<ProjectDetection> {
   return { language: "typescript", framework: "express" };
 }
 
+async function detectExistingEntities(root: string): Promise<string[]> {
+  const entityDir = join(root, "src", "domain", "entities");
+  if (!(await exists(entityDir))) {
+    return [];
+  }
+
+  const entries = await readdir(entityDir, { withFileTypes: true });
+  return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".ts")).map((entry) => entry.name.replace(/\.ts$/, ""));
+}
+
+async function updatePrismaSchema(root: string, entity: EntityConfig, dryRun: boolean): Promise<boolean> {
+  const schemaPath = join(root, "prisma", "schema.prisma");
+  if (!(await exists(schemaPath))) {
+    return false;
+  }
+
+  const className = toPascalCase(entity.name);
+  const current = await readFile(schemaPath, "utf8");
+  if (new RegExp(`model\\s+${className}\\b`).test(current)) {
+    return false;
+  }
+
+  const model = `model ${className} {
+  id String @id @default(uuid())
+${entity.fields.map((field) => `  ${toCamelCase(field.name)} ${toPrismaType(field)}`).join("\n")}
+}
+`;
+  if (!dryRun) {
+    await writeFile(schemaPath, `${current.trimEnd()}\n\n${model}`, "utf8");
+  }
+  return true;
+}
+
+async function updateContainer(root: string, entity: EntityConfig, dryRun: boolean): Promise<boolean> {
+  const containerPath = join(root, "src", "infrastructure", "container.ts");
+  const view = toEntityView(entity);
+  const importLine = `import { ${view.className}Repository } from "./repositories/${view.camelName}Repository.js";`;
+  const registrationLine = `  ${view.camelName}Repository: new ${view.className}Repository(),`;
+
+  if (!(await exists(containerPath))) {
+    const content = `${importLine}
+
+export const container = {
+${registrationLine}
+};
+`;
+    if (!dryRun) {
+      await writeFile(containerPath, content, "utf8");
+    }
+    return true;
+  }
+
+  const current = await readFile(containerPath, "utf8");
+  if (current.includes(registrationLine)) {
+    return false;
+  }
+
+  const withImport = current.includes(importLine) ? current : `${importLine}\n${current}`;
+  const next = withImport.replace(/export const container = \{\n/, `export const container = {\n${registrationLine}\n`);
+  if (next === current) {
+    return false;
+  }
+  if (!dryRun) {
+    await writeFile(containerPath, next, "utf8");
+  }
+  return true;
+}
+
 async function registerTypeScriptExpressRoute(root: string, entity: EntityConfig, dryRun: boolean): Promise<boolean> {
   const mainPath = join(root, "src", "main.ts");
   const className = toPascalCase(entity.name);
@@ -218,6 +299,17 @@ export interface PaginationQueryDto {
   page?: number;
   limit?: number;
   q?: string;
+  sort?: string;
+}
+
+export interface FilterDto {
+  field: string;
+  value: string;
+}
+
+export interface SortDto {
+  field: string;
+  direction: "asc" | "desc";
 }
 
 export interface PaginatedResponseDto<T> {
@@ -523,6 +615,14 @@ function toTypeScriptType(type: FieldType): string {
   if (type === "boolean") return "boolean";
   if (type === "date") return "Date";
   return "string";
+}
+
+function toPrismaType(field: EntityFieldConfig): string {
+  const suffix = field.required === false ? "?" : "";
+  if (field.type === "number") return `Float${suffix}`;
+  if (field.type === "boolean") return `Boolean${suffix}`;
+  if (field.type === "date") return `DateTime${suffix}`;
+  return `String${suffix}`;
 }
 
 function toPascalCase(value: string): string {

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
 import { GeneratorEngine } from "../core/application/generatorEngine.js";
@@ -44,6 +44,11 @@ export function createCli(engine: GeneratorEngine, extender: ProjectExtender, pl
       if (command === "wizard") {
         const options = await promptCreateOptions();
         const { config, outputRoot } = await toCreateProjectRequest(options);
+        printProjectPreview(config, outputRoot);
+        if (booleanOption(options, "save-config")) {
+          await writeFile("arxgen.json", `${JSON.stringify({ ...config, out: outputRoot }, null, 2)}\n`, "utf8");
+          logger.info("Saved arxgen.json");
+        }
         const result = await engine.createProject(config, outputRoot, {
           dryRun: booleanOption(options, "dry-run"),
           overwrite: booleanOption(options, "force")
@@ -115,7 +120,7 @@ function parseOptions(args: string[]): CliOptions {
     }
 
     const key = token.slice(2);
-    if (key === "force" || key === "dry-run" || key === "docker" || key === "nginx" || key === "redis" || key === "merge") {
+    if (key === "force" || key === "dry-run" || key === "docker" || key === "nginx" || key === "redis" || key === "merge" || key === "save-config") {
       options[key] = true;
       continue;
     }
@@ -155,7 +160,8 @@ function appendOption(options: CliOptions, key: string, value: string): void {
 async function toCreateProjectRequest(options: CliOptions): Promise<CreateProjectRequest> {
   const configPath = stringOption(options, "config");
   const fileConfig = configPath ? await readConfigFile(configPath) : {};
-  const merged = { ...fileConfig, ...removeCliOnlyOptions(options) };
+  const presetConfig = parsePreset(options);
+  const merged = { ...presetConfig, ...fileConfig, ...removeCliOnlyOptions(options) };
   const architecture = merged.architecture ?? "clean";
   const fullstack = parseFullstack(options, fileConfig);
 
@@ -199,7 +205,7 @@ async function readConfigFile(path: string): Promise<Record<string, unknown>> {
 }
 
 function removeCliOnlyOptions(options: CliOptions): Record<string, CliValue> {
-  const { config: _config, out: _out, project: _project, force: _force, merge: _merge, "dry-run": _dryRun, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
+  const { config: _config, out: _out, project: _project, preset: _preset, force: _force, merge: _merge, "save-config": _saveConfig, "dry-run": _dryRun, entity: _entity, field: _field, frontend: _frontend, backend: _backend, ...projectOptions } = options;
   return projectOptions;
 }
 
@@ -310,6 +316,30 @@ function parseFullstack(options: CliOptions, fileConfig: Record<string, unknown>
       framework: requireOption(value.backend, "framework")
     }
   };
+}
+
+function parsePreset(options: CliOptions): Record<string, unknown> {
+  const preset = stringOption(options, "preset");
+  if (!preset) {
+    return {};
+  }
+
+  if (preset === "saas") {
+    return {
+      language: "typescript",
+      framework: "express",
+      architecture: "clean",
+      database: "postgres",
+      orm: "prisma",
+      validation: "zod",
+      auth: "jwt",
+      redis: true,
+      docker: true,
+      nginx: true
+    };
+  }
+
+  throw new Error(`Unknown preset: ${preset}`);
 }
 
 function stackFromAlias(value: string, kind: "frontend" | "backend"): { language: string; framework: string } {
@@ -523,7 +553,7 @@ function parseRelations(options: Record<string, unknown>): RelationConfig[] | un
 }
 
 function isRelationKind(value: unknown): value is RelationKind {
-  return value === "one-to-one" || value === "one-to-many" || value === "many-to-one" || value === "many-to-many";
+  return value === "one-to-one" || value === "one-to-many" || value === "many-to-one" || value === "many-to-many" || value === "polymorphic" || value === "tree";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -534,7 +564,7 @@ function printHelp(logger: Logger): void {
   logger.info(`arxgen
 
 Commands:
-  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--preset saas] [--out <dir>] [--force] [--dry-run]
   create --name <name> --frontend react --backend express [--database postgres] [--redis] [--docker] [--nginx] [--out <dir>]
   add entity <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add crud <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
@@ -555,6 +585,7 @@ async function promptCreateOptions(): Promise<CliOptions> {
     const orm = await rl.question("ORM [none/prisma/sqlalchemy/efcore/jpa/gorm/eloquent]: ");
     const validation = await rl.question("Validation [none/zod/class-validator/joi]: ");
     const auth = await rl.question("Auth [none/jwt]: ");
+    const saveConfig = await rl.question("Save arxgen.json? [y/N]: ");
 
     const options: CliOptions = {
       name,
@@ -566,8 +597,22 @@ async function promptCreateOptions(): Promise<CliOptions> {
     if (orm && orm !== "none") options.orm = orm;
     if (validation && validation !== "none") options.validation = validation;
     if (auth && auth !== "none") options.auth = auth;
+    if (saveConfig.toLowerCase() === "y" || saveConfig.toLowerCase() === "yes") options["save-config"] = true;
     return options;
   } finally {
     rl.close();
+  }
+}
+
+function printProjectPreview(config: ProjectConfig, outputRoot: string): void {
+  console.log("Project preview:");
+  console.log(`${outputRoot}/${config.projectName}/`);
+  console.log("  src/");
+  console.log("    domain/");
+  console.log("    application/");
+  console.log("    infrastructure/");
+  console.log("    presentation/");
+  if (config.entities?.length) {
+    console.log(`  entities: ${config.entities.map((entity) => entity.name).join(", ")}`);
   }
 }

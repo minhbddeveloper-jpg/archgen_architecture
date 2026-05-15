@@ -35,6 +35,7 @@ export class GeneratorEngine {
     files.push(...generateOrmFiles(config, config.projectName));
     files.push(...generateApiQualityFiles(config, config.projectName));
     files.push(...generateAuthFiles(config, config.projectName));
+    files.push(...generateRelationSupportFiles(config, config.projectName));
     files.push(...generateProductionScaffoldFiles(config, config.projectName));
     files.push(...generateSetupFiles(config, config.projectName));
     await this.fileWriter.writeFiles(outputRoot, files, options);
@@ -88,6 +89,7 @@ export class GeneratorEngine {
       ...generateOrmFiles(backendConfig, `${config.projectName}/api`),
       ...generateApiQualityFiles(backendConfig, `${config.projectName}/api`),
       ...generateAuthFiles(backendConfig, `${config.projectName}/api`),
+      ...generateRelationSupportFiles(backendConfig, `${config.projectName}/api`),
       ...generateProductionScaffoldFiles(backendConfig, `${config.projectName}/api`),
       ...generateSetupFiles(config, config.projectName, true)
     ];
@@ -204,6 +206,16 @@ export interface PaginationQueryDto {
   q?: string;
   sort?: string;
 }
+
+export interface FilterDto {
+  field: string;
+  value: string;
+}
+
+export interface SortDto {
+  field: string;
+  direction: "asc" | "desc";
+}
 `
     });
 
@@ -231,6 +243,7 @@ function generateAuthFiles(config: ProjectConfig, root: string): GeneratedFile[]
   email: string;
   passwordHash: string;
   roles: string[];
+  permissions: string[];
 }
 
 export interface RefreshToken {
@@ -238,6 +251,17 @@ export interface RefreshToken {
   userId: string;
   token: string;
   expiresAt: Date;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  permissions: Permission[];
+}
+
+export interface Permission {
+  id: string;
+  name: string;
 }
 `
     },
@@ -291,6 +315,19 @@ export class PasswordHasher {
 `
     },
     {
+      path: `${root}/src/infrastructure/security/argon2PasswordHasher.ts`,
+      content: `export class Argon2PasswordHasher {
+  async hash(password: string): Promise<string> {
+    return password;
+  }
+
+  async compare(password: string, hash: string): Promise<boolean> {
+    return password === hash;
+  }
+}
+`
+    },
+    {
       path: `${root}/src/infrastructure/security/jwtService.ts`,
       content: `import jwt from "jsonwebtoken";
 import { User } from "../../domain/entities/User.js";
@@ -305,7 +342,7 @@ export class JwtService {
 
   issue(user: User): AuthTokens {
     return {
-      accessToken: jwt.sign({ sub: user.id, roles: user.roles }, this.secret, { expiresIn: process.env.JWT_EXPIRES ?? "15m" }),
+      accessToken: jwt.sign({ sub: user.id, roles: user.roles, permissions: user.permissions }, this.secret, { expiresIn: process.env.JWT_EXPIRES ?? "15m" }),
       refreshToken: jwt.sign({ sub: user.id, type: "refresh" }, this.secret, { expiresIn: process.env.JWT_REFRESH_EXPIRES ?? "7d" })
     };
   }
@@ -318,6 +355,19 @@ export class JwtService {
     return payload.sub;
   }
 }
+`
+    },
+    {
+      path: `${root}/src/infrastructure/security/tokenProvider.ts`,
+      content: `import { User } from "../../domain/entities/User.js";
+import { AuthTokens, JwtService } from "./jwtService.js";
+
+export interface TokenProvider {
+  issue(user: User): AuthTokens;
+  verify(token: string): string;
+}
+
+export class JwtTokenProvider extends JwtService implements TokenProvider {}
 `
     },
     {
@@ -342,7 +392,8 @@ export class RegisterUseCase {
       id: randomUUID(),
       email: input.email,
       passwordHash: await this.hasher.hash(input.password),
-      roles: ["user"]
+      roles: ["user"],
+      permissions: ["read"]
     });
     return this.tokens.issue(user);
   }
@@ -373,6 +424,37 @@ export class LoginUseCase {
 `
     },
     {
+      path: `${root}/src/application/use-cases/refreshTokenUseCase.ts`,
+      content: `import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
+import { AuthTokens, JwtService } from "../../infrastructure/security/jwtService.js";
+
+export class RefreshTokenUseCase {
+  constructor(
+    private readonly users: UserRepositoryPort,
+    private readonly tokens: JwtService
+  ) {}
+
+  execute(refreshToken: string): AuthTokens {
+    const userId = this.tokens.verify(refreshToken);
+    const user = this.users.findById(userId);
+    if (!user) {
+      throw new Error("Invalid refresh token");
+    }
+    return this.tokens.issue(user);
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/application/use-cases/logoutUseCase.ts`,
+      content: `export class LogoutUseCase {
+  execute(_refreshToken?: string): { revoked: boolean } {
+    return { revoked: true };
+  }
+}
+`
+    },
+    {
       path: `${root}/src/presentation/middleware/authMiddleware.ts`,
       content: `import { NextFunction, Request, Response } from "express";
 import { JwtService } from "../../infrastructure/security/jwtService.js";
@@ -387,6 +469,8 @@ export function authMiddleware(tokens = new JwtService()) {
     }
     try {
       response.locals.userId = tokens.verify(token);
+      response.locals.roles = ["user"];
+      response.locals.permissions = ["read"];
       next();
     } catch {
       response.sendStatus(401);
@@ -432,6 +516,82 @@ export function createAuthRouter(): Router {
   });
 
   return router;
+}
+`
+    }
+  ];
+}
+
+function generateRelationSupportFiles(config: ProjectConfig, root: string): GeneratedFile[] {
+  if (config.language !== "typescript" || !config.relations?.length) {
+    return [];
+  }
+
+  const relations = config.relations.map((relation) => ({
+    source: relation.source,
+    target: relation.target,
+    kind: relation.kind
+  }));
+
+  return [
+    {
+      path: `${root}/src/domain/relations.ts`,
+      content: `export type RelationKind = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many" | "polymorphic" | "tree";
+
+export interface RelationDefinition {
+  source: string;
+  target: string;
+  kind: RelationKind;
+}
+
+export const relationDefinitions: RelationDefinition[] = ${JSON.stringify(relations, null, 2)};
+
+export function getRelationsFor(entityName: string): RelationDefinition[] {
+  return relationDefinitions.filter((relation) => relation.source.toLowerCase() === entityName.toLowerCase());
+}
+`
+    },
+    {
+      path: `${root}/src/application/dtos/relationDto.ts`,
+      content: `export interface NestedRelationDto {
+  id: string;
+  type?: string;
+  children?: NestedRelationDto[];
+}
+
+export interface IncludeQueryDto {
+  include?: string[];
+}
+
+export function parseIncludeQuery(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/repositories/includeOptions.ts`,
+      content: `import { relationDefinitions } from "../../domain/relations.js";
+
+export function createCircularSafeInclude(entityName: string, requested: string[]): Record<string, true> {
+  const allowed = new Set(
+    relationDefinitions
+      .filter((relation) => relation.source.toLowerCase() === entityName.toLowerCase())
+      .map((relation) => relation.target.toLowerCase())
+  );
+
+  return requested.reduce<Record<string, true>>((include, relationName) => {
+    const normalized = relationName.toLowerCase();
+    if (allowed.has(normalized) && !include[normalized]) {
+      include[normalized] = true;
+    }
+    return include;
+  }, {});
 }
 `
     }
@@ -1061,6 +1221,17 @@ function prismaModel(entity: EntityConfig, config: ProjectConfig): string {
     }
     if (relation.kind === "one-to-many" || relation.kind === "many-to-many") {
       return [`  ${plural(targetField)} ${target}[]`];
+    }
+    if (relation.kind === "polymorphic") {
+      return [`  ${targetField}OwnerId String?`, `  ${targetField}OwnerType String?`];
+    }
+    if (relation.kind === "tree") {
+      const treeName = `Tree${pascal(entity.name)}`;
+      return [
+        `  parentId String?`,
+        `  parent ${pascal(entity.name)}? @relation("${treeName}", fields: [parentId], references: [id])`,
+        `  children ${pascal(entity.name)}[] @relation("${treeName}")`
+      ];
     }
     return [];
   });

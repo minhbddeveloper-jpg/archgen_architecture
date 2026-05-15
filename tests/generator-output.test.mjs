@@ -209,6 +209,12 @@ test("generates auth, validation, pagination, and relation support for TypeScrip
     const projectRoot = join(outputRoot, "course-api");
     assert.equal(existsSync(join(projectRoot, "src/presentation/routes/authRoutes.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/presentation/middleware/authMiddleware.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/application/use-cases/refreshTokenUseCase.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/application/use-cases/logoutUseCase.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/infrastructure/security/tokenProvider.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/domain/relations.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/application/dtos/relationDto.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/infrastructure/repositories/includeOptions.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/application/dtos/studentDto.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/presentation/validation/studentSchemas.ts")), true);
 
@@ -218,6 +224,98 @@ test("generates auth, validation, pagination, and relation support for TypeScrip
 
     const main = readNormalized(join(projectRoot, "src/main.ts"));
     assert.match(main, /app\.use\("\/auth", createAuthRouter\(\)\)/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("add entity updates Prisma schema and infrastructure container when merging", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "school-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "school-api");
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "add",
+        "entity",
+        "course",
+        "--field",
+        "title:string",
+        "--project",
+        projectRoot,
+        "--merge"
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const schema = readNormalized(join(projectRoot, "prisma/schema.prisma"));
+    assert.match(schema, /model Course/);
+    assert.match(schema, /title String/);
+
+    const container = readNormalized(join(projectRoot, "src/infrastructure/container.ts"));
+    assert.match(container, /CourseRepository/);
+    assert.match(container, /courseRepository/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("creates a SaaS preset without requiring language and framework flags", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--preset",
+        "saas",
+        "--name",
+        "preset-api",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "preset-api");
+    assert.equal(existsSync(join(projectRoot, "src/domain/entities/Student.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/presentation/routes/authRoutes.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "prisma/schema.prisma")), true);
+    assert.equal(existsSync(join(projectRoot, "docker-compose.yml")), true);
+    assert.equal(existsSync(join(projectRoot, "nginx/default.conf")), true);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }

@@ -24,4 +24,7 @@ export interface StackPluginContract {
   framework: string;
   capabilities: StackCapability;
   generateProject(config: ProjectConfig): Promise<GeneratedFile[]>;
+  generateEntity?(context: GenerationContext): Promise<GeneratedFile[]>;
+  generateUseCase?(context: GenerationContext & { name?: string }): Promise<GeneratedFile[]>;
+  generateController?(context: GenerationContext): Promise<GeneratedFile[]>;
 }

@@ -15,7 +15,7 @@ export interface EntityConfig {
 
 export type ValidationProvider = "zod" | "class-validator" | "joi";
 
-export type RelationKind = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
+export type RelationKind = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many" | "polymorphic" | "tree";
 
 export interface RelationConfig {
   source: string;
