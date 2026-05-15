@@ -870,52 +870,114 @@ def delete_${entity.moduleName}(record_id: str) -> Response:
 
 function pythonDjangoCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {
   const root = contextString(context, "projectSlug");
+  const fields = entity.fields.map((field) => `    ${field.snakeName}: ${field.pythonType}`).join("\n");
+  const serializerFields = entity.fields.map((field) => `        "${field.snakeName}": record.get("${field.snakeName}")`).join(",\n");
 
   return [
     {
+      path: `${root}/domain/models/${entity.moduleName}.py`,
+      content: `from dataclasses import dataclass
+
+
+@dataclass
+class ${entity.className}:
+    id: str
+${fields || "    pass"}
+`
+    },
+    {
+      path: `${root}/infrastructure/repositories/${entity.moduleName}_repository.py`,
+      content: `class ${entity.className}Repository:
+    def __init__(self) -> None:
+        self._records: dict[str, dict] = {}
+
+    def list(self) -> list[dict]:
+        return list(self._records.values())
+
+    def get(self, record_id: str) -> dict | None:
+        return self._records.get(record_id)
+
+    def save(self, record: dict) -> dict:
+        self._records[record["id"]] = record
+        return record
+
+    def delete(self, record_id: str) -> bool:
+        return self._records.pop(record_id, None) is not None
+`
+    },
+    {
+      path: `${root}/application/services/${entity.moduleName}_service.py`,
+      content: `from uuid import uuid4
+
+from infrastructure.repositories.${entity.moduleName}_repository import ${entity.className}Repository
+
+
+class ${entity.className}Service:
+    def __init__(self, repository: ${entity.className}Repository | None = None) -> None:
+        self.repository = repository or ${entity.className}Repository()
+
+    def list(self) -> list[dict]:
+        return self.repository.list()
+
+    def get(self, record_id: str) -> dict | None:
+        return self.repository.get(record_id)
+
+    def create(self, payload: dict) -> dict:
+        return self.repository.save({"id": str(uuid4()), **payload})
+
+    def update(self, record_id: str, payload: dict) -> dict | None:
+        current = self.repository.get(record_id)
+        if current is None:
+            return None
+        current.update(payload)
+        return self.repository.save(current)
+
+    def delete(self, record_id: str) -> bool:
+        return self.repository.delete(record_id)
+`
+    },
+    {
+      path: `${root}/presentation/serializers/${entity.moduleName}_serializer.py`,
+      content: `def serialize_${entity.moduleName}(record: dict) -> dict:
+    return {
+        "id": record.get("id")${serializerFields ? ",\n" + serializerFields : ""}
+    }
+`
+    },
+    {
       path: `${root}/presentation/views/${entity.moduleName}_views.py`,
       content: `import json
-from uuid import uuid4
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-records: dict[str, dict] = {}
+from application.services.${entity.moduleName}_service import ${entity.className}Service
+from presentation.serializers.${entity.moduleName}_serializer import serialize_${entity.moduleName}
 
+service = ${entity.className}Service()
 
-def list_${entity.routeName}(_request: HttpRequest) -> JsonResponse:
-    return JsonResponse(list(records.values()), safe=False)
-
-
-def get_${entity.moduleName}(_request: HttpRequest, record_id: str) -> JsonResponse:
-    record = records.get(record_id)
-    if record is None:
-        return JsonResponse({}, status=404)
-    return JsonResponse(record)
+@csrf_exempt
+def ${entity.moduleName}_collection(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        return JsonResponse([serialize_${entity.moduleName}(record) for record in service.list()], safe=False)
+    if request.method == "POST":
+        payload = json.loads(request.body or "{}")
+        return JsonResponse(serialize_${entity.moduleName}(service.create(payload)), status=201)
+    return JsonResponse({}, status=405)
 
 
 @csrf_exempt
-def create_${entity.moduleName}(request: HttpRequest) -> JsonResponse:
-    payload = json.loads(request.body or "{}")
-    record = {"id": str(uuid4()), **payload}
-    records[record["id"]] = record
-    return JsonResponse(record, status=201)
-
-
-@csrf_exempt
-def update_${entity.moduleName}(request: HttpRequest, record_id: str) -> JsonResponse:
-    if record_id not in records:
-        return JsonResponse({}, status=404)
-    payload = json.loads(request.body or "{}")
-    records[record_id].update(payload)
-    return JsonResponse(records[record_id])
-
-
-@csrf_exempt
-def delete_${entity.moduleName}(_request: HttpRequest, record_id: str) -> HttpResponse:
-    if records.pop(record_id, None) is None:
-        return JsonResponse({}, status=404)
-    return HttpResponse(status=204)
+def ${entity.moduleName}_member(request: HttpRequest, record_id: str) -> JsonResponse | HttpResponse:
+    if request.method == "GET":
+        record = service.get(record_id)
+        return JsonResponse(serialize_${entity.moduleName}(record), status=200) if record else JsonResponse({}, status=404)
+    if request.method == "PUT":
+        payload = json.loads(request.body or "{}")
+        record = service.update(record_id, payload)
+        return JsonResponse(serialize_${entity.moduleName}(record), status=200) if record else JsonResponse({}, status=404)
+    if request.method == "DELETE":
+        return HttpResponse(status=204) if service.delete(record_id) else JsonResponse({}, status=404)
+    return JsonResponse({}, status=405)
 `
     }
   ];
@@ -1053,7 +1115,8 @@ function csharpCrudFiles(context: Record<string, unknown>, entity: EntityView): 
   return [
     { path: `${root}/Domain/Entities/${entity.className}.cs`, content: `namespace ${projectClassName}.Domain.Entities;\n\npublic class ${entity.className}\n{\n    public Guid Id { get; set; }\n${properties}\n}\n` },
     { path: `${root}/Infrastructure/Repositories/${entity.className}Repository.cs`, content: `namespace ${projectClassName}.Infrastructure.Repositories;\n\nusing ${projectClassName}.Domain.Entities;\n\npublic class ${entity.className}Repository\n{\n    private readonly Dictionary<Guid, ${entity.className}> records = new();\n    public IReadOnlyCollection<${entity.className}> List() => records.Values.ToList();\n    public ${entity.className}? Get(Guid id) => records.GetValueOrDefault(id);\n    public ${entity.className} Save(${entity.className} record) { records[record.Id] = record; return record; }\n    public bool Delete(Guid id) => records.Remove(id);\n}\n` },
-    { path: `${root}/Application/Services/${entity.className}Service.cs`, content: `namespace ${projectClassName}.Application.Services;\n\nusing ${projectClassName}.Domain.Entities;\nusing ${projectClassName}.Infrastructure.Repositories;\n\npublic class ${entity.className}Service\n{\n    private readonly ${entity.className}Repository repository = new();\n    public IReadOnlyCollection<${entity.className}> List() => repository.List();\n    public ${entity.className}? Get(Guid id) => repository.Get(id);\n    public ${entity.className} Create(${entity.className} record) { record.Id = Guid.NewGuid(); return repository.Save(record); }\n    public ${entity.className}? Update(Guid id, ${entity.className} record) { if (repository.Get(id) is null) return null; record.Id = id; return repository.Save(record); }\n    public bool Delete(Guid id) => repository.Delete(id);\n}\n` }
+    { path: `${root}/Application/Services/${entity.className}Service.cs`, content: `namespace ${projectClassName}.Application.Services;\n\nusing ${projectClassName}.Domain.Entities;\nusing ${projectClassName}.Infrastructure.Repositories;\n\npublic class ${entity.className}Service\n{\n    private readonly ${entity.className}Repository repository = new();\n    public IReadOnlyCollection<${entity.className}> List() => repository.List();\n    public ${entity.className}? Get(Guid id) => repository.Get(id);\n    public ${entity.className} Create(${entity.className} record) { record.Id = Guid.NewGuid(); return repository.Save(record); }\n    public ${entity.className}? Update(Guid id, ${entity.className} record) { if (repository.Get(id) is null) return null; record.Id = id; return repository.Save(record); }\n    public bool Delete(Guid id) => repository.Delete(id);\n}\n` },
+    { path: `${root}/Presentation/Controllers/${entity.className}Controller.cs`, content: `namespace ${projectClassName}.Presentation.Controllers;\n\nusing ${projectClassName}.Application.Services;\nusing ${projectClassName}.Domain.Entities;\nusing Microsoft.AspNetCore.Mvc;\n\n[ApiController]\n[Route("${entity.routeName}")]\npublic class ${entity.className}Controller : ControllerBase\n{\n    private readonly ${entity.className}Service service = new();\n\n    [HttpGet]\n    public ActionResult<IReadOnlyCollection<${entity.className}>> List() => Ok(service.List());\n\n    [HttpGet("{id:guid}")]\n    public ActionResult<${entity.className}> Get(Guid id)\n    {\n        var record = service.Get(id);\n        return record is null ? NotFound() : Ok(record);\n    }\n\n    [HttpPost]\n    public ActionResult<${entity.className}> Create(${entity.className} record)\n    {\n        var created = service.Create(record);\n        return Created($"/${entity.routeName}/{created.Id}", created);\n    }\n\n    [HttpPut("{id:guid}")]\n    public ActionResult<${entity.className}> Update(Guid id, ${entity.className} record)\n    {\n        var updated = service.Update(id, record);\n        return updated is null ? NotFound() : Ok(updated);\n    }\n\n    [HttpDelete("{id:guid}")]\n    public IActionResult Delete(Guid id) => service.Delete(id) ? NoContent() : NotFound();\n}\n` }
   ];
 }
 

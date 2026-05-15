@@ -443,6 +443,135 @@ test("adds entities from a SQL schema file to an existing Express project", () =
   }
 });
 
+test("generates full CRUD layers for all backend stacks", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+  const cases = [
+    {
+      name: "fastapi-api",
+      language: "python",
+      framework: "fastapi",
+      files: [
+        "app/domain/models/student.py",
+        "app/application/services/student_service.py",
+        "app/infrastructure/repositories/student_repository.py",
+        "app/presentation/routers/student_router.py"
+      ]
+    },
+    {
+      name: "django-api",
+      language: "python",
+      framework: "django",
+      files: [
+        "domain/models/student.py",
+        "application/services/student_service.py",
+        "infrastructure/repositories/student_repository.py",
+        "presentation/serializers/student_serializer.py",
+        "presentation/views/student_views.py"
+      ]
+    },
+    {
+      name: "spring-api",
+      language: "java",
+      framework: "spring",
+      files: [
+        "src/main/java/com/example/spring/api/domain/entities/Student.java",
+        "src/main/java/com/example/spring/api/application/services/StudentService.java",
+        "src/main/java/com/example/spring/api/infrastructure/repositories/StudentRepository.java",
+        "src/main/java/com/example/spring/api/presentation/controllers/StudentController.java"
+      ]
+    },
+    {
+      name: "dotnet-api",
+      language: "csharp",
+      framework: "aspnetcore",
+      files: [
+        "Domain/Entities/Student.cs",
+        "Application/Services/StudentService.cs",
+        "Infrastructure/Repositories/StudentRepository.cs",
+        "Presentation/Controllers/StudentController.cs"
+      ]
+    },
+    {
+      name: "laravel-api",
+      language: "php",
+      framework: "laravel",
+      files: [
+        "app/Domain/Entities/Student.php",
+        "app/Application/Services/StudentService.php",
+        "app/Infrastructure/Repositories/StudentRepository.php",
+        "app/Http/Controllers/StudentController.php"
+      ]
+    },
+    {
+      name: "gin-api",
+      language: "go",
+      framework: "gin",
+      files: [
+        "internal/domain/student.go",
+        "internal/usecase/student_usecase.go",
+        "internal/repository/student_repository.go",
+        "internal/handler/student_handler.go"
+      ]
+    },
+    {
+      name: "rails-api",
+      language: "ruby",
+      framework: "rails",
+      files: [
+        "app/domain/entities/student.rb",
+        "app/application/services/student_service.rb",
+        "app/infrastructure/repositories/student_repository.rb",
+        "app/controllers/students_controller.rb"
+      ]
+    },
+    {
+      name: "ktor-api",
+      language: "kotlin",
+      framework: "ktor",
+      files: [
+        "src/main/kotlin/com/example/ktor/api/domain/entities/Student.kt",
+        "src/main/kotlin/com/example/ktor/api/application/services/StudentService.kt",
+        "src/main/kotlin/com/example/ktor/api/infrastructure/repositories/StudentRepository.kt",
+        "src/main/kotlin/com/example/ktor/api/presentation/routes/StudentRoutes.kt"
+      ]
+    }
+  ];
+
+  try {
+    for (const stack of cases) {
+      execFileSync(
+        process.execPath,
+        [
+          "dist/bin/arxgen.js",
+          "create",
+          "--name",
+          stack.name,
+          "--language",
+          stack.language,
+          "--framework",
+          stack.framework,
+          "--entity",
+          "student",
+          "--field",
+          "name:string",
+          "--field",
+          "email:string",
+          "--out",
+          outputRoot
+        ],
+        { cwd: process.cwd(), stdio: "pipe" }
+      );
+
+      const projectRoot = join(outputRoot, stack.name);
+      for (const file of stack.files) {
+        assert.equal(existsSync(join(projectRoot, file)), true, `${stack.framework} should generate ${file}`);
+      }
+    }
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
 test("generates NestJS clean architecture module output", () => {
   const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 

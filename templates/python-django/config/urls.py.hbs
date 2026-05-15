@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.urls import path
 {{#each entities}}
-from presentation.views.{{moduleName}}_views import create_{{moduleName}}, delete_{{moduleName}}, get_{{moduleName}}, list_{{routeName}}, update_{{moduleName}}
+from presentation.views.{{moduleName}}_views import {{moduleName}}_collection, {{moduleName}}_member
 {{/each}}
 
 
@@ -12,10 +12,8 @@ def health(_request):
 urlpatterns = [
     path("health", health),
 {{#each entities}}
-    path("{{routeName}}", list_{{routeName}}),
-    path("{{routeName}}/", create_{{moduleName}}),
-    path("{{routeName}}/<str:record_id>", get_{{moduleName}}),
-    path("{{routeName}}/<str:record_id>/update", update_{{moduleName}}),
-    path("{{routeName}}/<str:record_id>/delete", delete_{{moduleName}}),
+    path("{{routeName}}", {{moduleName}}_collection),
+    path("{{routeName}}/", {{moduleName}}_collection),
+    path("{{routeName}}/<str:record_id>", {{moduleName}}_member),
 {{/each}}
 ]

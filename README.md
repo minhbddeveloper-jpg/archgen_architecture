@@ -200,6 +200,23 @@ Supported SQL import scope:
 | Unit test | Placeholder | Placeholder |
 | Integration/e2e test | Placeholder | Placeholder |
 
+## Backend CRUD Coverage
+
+When `--entity` or `--from-sql` is provided, arxgen generates CRUD layers for every supported backend stack.
+
+| Stack | Generated CRUD layers |
+| --- | --- |
+| TypeScript Express | Entity, DTO, port, use cases, repository, controller, route |
+| TypeScript NestJS | Module, domain model, DTO, repository provider, service, controller |
+| Python FastAPI | Pydantic models, service, repository, router |
+| Python Django | Domain model, serializer, service, repository, views, URLs |
+| Java Spring Boot | Entity, service, repository, REST controller |
+| C# ASP.NET Core | Entity, service, repository, controller, minimal API routes |
+| PHP Laravel | Entity, service, repository, controller, API routes |
+| Go Gin | Domain model, use case, repository, handler, registered routes |
+| Ruby Rails | Entity, service object, repository, controller, resource routes |
+| Kotlin Ktor | Entity, service, repository, route registration |
+
 Use the interactive wizard:
 
 ```bash
