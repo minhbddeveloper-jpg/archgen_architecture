@@ -548,63 +548,88 @@ test("upgrades existing generated backend entities from a changed SQL schema", (
       language: "typescript",
       framework: "nestjs",
       file: "src/modules/students/domain/Student.ts",
-      expected: [/phone\?: string/, /age\?: number/]
+      expected: [/phone\?: string/, /age\?: number/],
+      createdFile: "src/modules/courses/domain/Course.ts",
+      registrationFile: "src/app.module.ts",
+      registrationExpected: /CoursesModule/
     },
     {
       name: "fastapi-api",
       language: "python",
       framework: "fastapi",
       file: "app/domain/models/student.py",
-      expected: [/phone: str \| None = None/, /age: float \| None = None/]
+      expected: [/phone: str \| None = None/, /age: float \| None = None/],
+      createdFile: "app/domain/models/course.py",
+      registrationFile: "app/main.py",
+      registrationExpected: /course_router/
     },
     {
       name: "django-api",
       language: "python",
       framework: "django",
       file: "domain/models/student.py",
-      expected: [/phone: str/, /age: float/]
+      expected: [/phone: str/, /age: float/],
+      createdFile: "domain/models/course.py",
+      registrationFile: "config/urls.py",
+      registrationExpected: /course_collection/
     },
     {
       name: "spring-api",
       language: "java",
       framework: "spring",
       file: "src/main/java/com/example/spring/api/domain/entities/Student.java",
-      expected: [/private String phone/, /private Double age/]
+      expected: [/private String phone/, /private Double age/],
+      createdFile: "src/main/java/com/example/spring/api/domain/entities/Course.java"
     },
     {
       name: "dotnet-api",
       language: "csharp",
       framework: "aspnetcore",
       file: "Domain/Entities/Student.cs",
-      expected: [/public string\? Phone/, /public decimal Age/]
+      expected: [/public string\? Phone/, /public decimal Age/],
+      createdFile: "Domain/Entities/Course.cs",
+      registrationFile: "Program.cs",
+      registrationExpected: /courseService/
     },
     {
       name: "laravel-api",
       language: "php",
       framework: "laravel",
       file: "app/Domain/Entities/Student.php",
-      expected: [/public \?string \$phone/, /public \?float \$age/]
+      expected: [/public \?string \$phone/, /public \?float \$age/],
+      createdFile: "app/Domain/Entities/Course.php",
+      registrationFile: "routes/api.php",
+      registrationExpected: /CourseController/
     },
     {
       name: "gin-api",
       language: "go",
       framework: "gin",
       file: "internal/domain/student.go",
-      expected: [/Phone string `json:"phone"`/, /Age float64 `json:"age"`/]
+      expected: [/Phone string `json:"phone"`/, /Age float64 `json:"age"`/],
+      createdFile: "internal/domain/course.go",
+      registrationFile: "cmd/api/main.go",
+      registrationExpected: /RegisterCourseRoutes/
     },
     {
       name: "rails-api",
       language: "ruby",
       framework: "rails",
       file: "app/domain/entities/student.rb",
-      expected: [/:phone/, /:age/]
+      expected: [/:phone/, /:age/],
+      createdFile: "app/domain/entities/course.rb",
+      registrationFile: "config/routes.rb",
+      registrationExpected: /resources :courses/
     },
     {
       name: "ktor-api",
       language: "kotlin",
       framework: "ktor",
       file: "src/main/kotlin/com/example/ktor/api/domain/entities/Student.kt",
-      expected: [/val phone: String\? = null/, /val age: Double\? = null/]
+      expected: [/val phone: String\? = null/, /val age: Double\? = null/],
+      createdFile: "src/main/kotlin/com/example/ktor/api/domain/entities/Course.kt",
+      registrationFile: "src/main/kotlin/com/example/ktor/api/Application.kt",
+      registrationExpected: /registerCourseRoutes/
     }
   ];
 
@@ -614,6 +639,11 @@ test("upgrades existing generated backend entities from a changed SQL schema", (
   name varchar(120) not null,
   phone varchar(40),
   age int
+);
+
+CREATE TABLE courses (
+  id uuid primary key,
+  title varchar(160) not null
 );
 `, "utf8");
 
@@ -674,6 +704,10 @@ test("upgrades existing generated backend entities from a changed SQL schema", (
       const content = readNormalized(join(projectRoot, stack.file));
       for (const expected of stack.expected) {
         assert.match(content, expected, `${stack.framework} should patch ${stack.file}`);
+      }
+      assert.equal(existsSync(join(projectRoot, stack.createdFile)), true, `${stack.framework} should create ${stack.createdFile}`);
+      if (stack.registrationFile && stack.registrationExpected) {
+        assert.match(readNormalized(join(projectRoot, stack.registrationFile)), stack.registrationExpected);
       }
     }
   } finally {

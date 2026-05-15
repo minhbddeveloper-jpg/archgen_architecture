@@ -39,6 +39,15 @@ export function popularStarterPlugins(templateRenderer: TemplateRenderer): Plugi
   return starterDefinitions.map((definition) => createStarterPlugin(definition, templateRenderer));
 }
 
+export function generateCrudFilesForStack(config: ProjectConfig, pluginName: string): GeneratedFile[] {
+  const definition = starterDefinitions.find((candidate) => candidate.name === pluginName);
+  if (!definition) {
+    return [];
+  }
+
+  return generateCrudFiles(definition, createTemplateContext(config, definition));
+}
+
 function createStarterPlugin(definition: StarterDefinition, templateRenderer: TemplateRenderer): Plugin {
   return {
     name: definition.name,

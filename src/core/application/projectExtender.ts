@@ -1,9 +1,10 @@
 import { access, readFile, readdir, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { Project, QuoteKind, SyntaxKind } from "ts-morph";
 import { GeneratedFile } from "../domain/generatedFile.js";
 import { EntityConfig, EntityFieldConfig, FieldType, ValidationProvider } from "../domain/projectConfig.js";
 import { FileWriter, WriteFilesOptions } from "./ports/fileWriter.js";
+import { generateCrudFilesForStack } from "../../plugins/popular-starters/index.js";
 
 export interface AddEntityRequest {
   entity: EntityConfig;
@@ -126,7 +127,7 @@ export class ProjectExtender {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
     if (detection.language !== "typescript" || detection.framework !== "express") {
-      return upgradeSchemaForDetectedStack(root, detection, request, options);
+      return upgradeSchemaForDetectedStack(root, detection, request, options, this.fileWriter);
     }
     const updatedFiles = new Set<string>();
     const changes: SchemaUpgradeChange[] = [];
@@ -283,13 +284,31 @@ async function detectExistingEntities(root: string): Promise<string[]> {
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".ts")).map((entry) => entry.name.replace(/\.ts$/, ""));
 }
 
-async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDetection, request: UpgradeSchemaRequest, options: WriteFilesOptions): Promise<UpgradeSchemaResult> {
+async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDetection, request: UpgradeSchemaRequest, options: WriteFilesOptions, fileWriter: FileWriter): Promise<UpgradeSchemaResult> {
   const updatedFiles = new Set<string>();
   const changes: SchemaUpgradeChange[] = [];
+  let filesWritten = 0;
 
   for (const entity of request.entities) {
     const patch = await patchStackEntity(root, detection, entity, Boolean(options.dryRun));
-    if (!patch || patch.addedFields.length === 0) {
+    if (!patch) {
+      const created = await createStackEntity(root, detection, entity, options, fileWriter);
+      if (!created) {
+        continue;
+      }
+      filesWritten += created.filesWritten;
+      for (const file of created.updatedFiles) {
+        updatedFiles.add(file);
+      }
+      changes.push({
+        entity: toPascalCase(entity.name),
+        addedFields: entity.fields,
+        created: true
+      });
+      continue;
+    }
+
+    if (patch.addedFields.length === 0) {
       continue;
     }
 
@@ -307,7 +326,7 @@ async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDet
     projectRoot: root,
     framework: detection.framework,
     language: detection.language,
-    filesWritten: 0,
+    filesWritten,
     dryRun: options.dryRun ?? false,
     updatedFiles: [...updatedFiles],
     changes
@@ -349,6 +368,210 @@ async function patchStackEntity(root: string, detection: ProjectDetection, entit
   }
 
   return undefined;
+}
+
+async function createStackEntity(root: string, detection: ProjectDetection, entity: EntityConfig, options: WriteFilesOptions, fileWriter: FileWriter): Promise<{ filesWritten: number; updatedFiles: string[] } | undefined> {
+  const pluginName = pluginNameForDetection(detection);
+  if (!pluginName) {
+    return undefined;
+  }
+
+  const projectName = basename(root);
+  const files = generateCrudFilesForStack({
+    projectName,
+    language: detection.language,
+    framework: detection.framework,
+    architecture: "clean",
+    entities: [entity]
+  }, pluginName).map((file) => stripProjectPrefix(projectName, file));
+
+  if (files.length === 0) {
+    return undefined;
+  }
+
+  await fileWriter.writeFiles(root, files, options);
+  const updatedFiles = await registerStackEntity(root, detection, entity, Boolean(options.dryRun));
+  return { filesWritten: files.length, updatedFiles };
+}
+
+function pluginNameForDetection(detection: ProjectDetection): string | undefined {
+  const key = `${detection.language}:${detection.framework}`;
+  const names: Record<string, string> = {
+    "typescript:nestjs": "typescript-nestjs",
+    "python:fastapi": "python-fastapi",
+    "python:django": "python-django",
+    "java:spring": "java-spring",
+    "csharp:aspnetcore": "csharp-aspnetcore",
+    "php:laravel": "php-laravel",
+    "go:gin": "go-gin",
+    "ruby:rails": "ruby-rails",
+    "kotlin:ktor": "kotlin-ktor"
+  };
+  return names[key];
+}
+
+function stripProjectPrefix(projectName: string, file: GeneratedFile): GeneratedFile {
+  const prefix = `${toKebabCase(projectName)}/`;
+  return {
+    path: file.path.startsWith(prefix) ? file.path.slice(prefix.length) : file.path,
+    content: file.content
+  };
+}
+
+async function registerStackEntity(root: string, detection: ProjectDetection, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  if (detection.framework === "nestjs") return registerNestJsModule(root, entity, dryRun);
+  if (detection.framework === "fastapi") return registerFastApiRouter(root, entity, dryRun);
+  if (detection.framework === "django") return registerDjangoUrls(root, entity, dryRun);
+  if (detection.framework === "aspnetcore") return registerCSharpRoutes(root, entity, dryRun);
+  if (detection.framework === "laravel") return registerLaravelRoutes(root, entity, dryRun);
+  if (detection.framework === "gin") return registerGoGinRoutes(root, entity, dryRun);
+  if (detection.framework === "rails") return registerRailsRoutes(root, entity, dryRun);
+  if (detection.framework === "ktor") return registerKtorRoutes(root, entity, dryRun);
+  return [];
+}
+
+async function registerNestJsModule(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const appModulePath = join(root, "src", "app.module.ts");
+  if (!(await exists(appModulePath))) return [];
+  const className = toPascalCase(entity.name);
+  const routeName = pluralize(toKebabCase(entity.name));
+  const importLine = `import { ${className}sModule } from "./modules/${routeName}/${routeName}.module";`;
+  const current = await readFile(appModulePath, "utf8");
+  let next = current.includes(importLine) ? current : `${importLine}\n${current}`;
+  if (!next.includes(`${className}sModule`)) {
+    next = next.replace(/imports:\s*\[/, `imports: [${className}sModule, `);
+  } else if (!/\bimports:[\s\S]*\b[A-Za-z0-9]+sModule/.test(current)) {
+    next = next.replace(/imports:\s*\[/, `imports: [${className}sModule, `);
+  }
+  if (next !== current && !dryRun) await writeFile(appModulePath, next, "utf8");
+  return next !== current ? ["src/app.module.ts"] : [];
+}
+
+async function registerFastApiRouter(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const mainPath = join(root, "app", "main.py");
+  if (!(await exists(mainPath))) return [];
+  const moduleName = toSnakeCase(entity.name);
+  const importLine = `from app.presentation.routers.${moduleName}_router import router as ${moduleName}_router`;
+  const includeLine = `app.include_router(${moduleName}_router)`;
+  const current = await readFile(mainPath, "utf8");
+  let next = current.includes(importLine) ? current : current.replace("from fastapi import FastAPI\n", `from fastapi import FastAPI\n${importLine}\n`);
+  if (!next.includes(includeLine)) {
+    next = next.replace(/app = FastAPI\([^\n]*\)\n/, (match) => `${match}${includeLine}\n`);
+  }
+  if (next !== current && !dryRun) await writeFile(mainPath, next, "utf8");
+  return next !== current ? ["app/main.py"] : [];
+}
+
+async function registerDjangoUrls(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const urlsPath = join(root, "config", "urls.py");
+  if (!(await exists(urlsPath))) return [];
+  const moduleName = toSnakeCase(entity.name);
+  const routeName = pluralize(toKebabCase(entity.name));
+  const importLine = `from presentation.views.${moduleName}_views import ${moduleName}_collection, ${moduleName}_member`;
+  const routeLines = `    path("${routeName}", ${moduleName}_collection),
+    path("${routeName}/", ${moduleName}_collection),
+    path("${routeName}/<str:record_id>", ${moduleName}_member),`;
+  const current = await readFile(urlsPath, "utf8");
+  let next = current.includes(importLine) ? current : current.replace("from django.urls import path\n", `from django.urls import path\n${importLine}\n`);
+  if (!next.includes(`${moduleName}_collection`)) {
+    next = next.replace(/\n\]/, `\n${routeLines}\n]`);
+  }
+  if (next !== current && !dryRun) await writeFile(urlsPath, next, "utf8");
+  return next !== current ? ["config/urls.py"] : [];
+}
+
+async function registerCSharpRoutes(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const programPath = join(root, "Program.cs");
+  if (!(await exists(programPath))) return [];
+  const className = toPascalCase(entity.name);
+  const camelName = toCamelCase(entity.name);
+  const routeName = pluralize(toKebabCase(entity.name));
+  const current = await readFile(programPath, "utf8");
+  let next = current;
+  const usingLines = [`using ${basename(root).replace(/[^a-zA-Z0-9]/g, "")}.Application.Services;`, `using ${basename(root).replace(/[^a-zA-Z0-9]/g, "")}.Domain.Entities;`];
+  for (const line of usingLines) {
+    if (!next.includes(line)) next = `${line}\n${next}`;
+  }
+  const serviceLine = `var ${camelName}Service = new ${className}Service();`;
+  if (!next.includes(serviceLine)) next = next.replace("var app = builder.Build();", `var app = builder.Build();\n${serviceLine}`);
+  const routeBlock = `app.MapGet("/${routeName}", () => Results.Ok(${camelName}Service.List()));
+app.MapGet("/${routeName}/{id:guid}", (Guid id) =>
+{
+    var record = ${camelName}Service.Get(id);
+    return record is null ? Results.NotFound() : Results.Ok(record);
+});
+app.MapPost("/${routeName}", (${className} record) => Results.Created($"/${routeName}/{record.Id}", ${camelName}Service.Create(record)));
+app.MapPut("/${routeName}/{id:guid}", (Guid id, ${className} record) =>
+{
+    var updated = ${camelName}Service.Update(id, record);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+});
+app.MapDelete("/${routeName}/{id:guid}", (Guid id) => ${camelName}Service.Delete(id) ? Results.NoContent() : Results.NotFound());`;
+  if (!next.includes(`app.MapGet("/${routeName}"`)) next = next.replace("\napp.Run();", `\n${routeBlock}\n\napp.Run();`);
+  if (next !== current && !dryRun) await writeFile(programPath, next, "utf8");
+  return next !== current ? ["Program.cs"] : [];
+}
+
+async function registerLaravelRoutes(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const routePath = join(root, "routes", "api.php");
+  if (!(await exists(routePath))) return [];
+  const className = toPascalCase(entity.name);
+  const routeName = pluralize(toKebabCase(entity.name));
+  const current = await readFile(routePath, "utf8");
+  const importLine = `use App\\Http\\Controllers\\${className}Controller;`;
+  let next = current.includes(importLine) ? current : current.replace("<?php\n", `<?php\n\n${importLine}\n`);
+  const routeBlock = `Route::get('/${routeName}', [${className}Controller::class, 'index']);
+Route::get('/${routeName}/{id}', [${className}Controller::class, 'show']);
+Route::post('/${routeName}', [${className}Controller::class, 'store']);
+Route::put('/${routeName}/{id}', [${className}Controller::class, 'update']);
+Route::delete('/${routeName}/{id}', [${className}Controller::class, 'destroy']);`;
+  if (!next.includes(`/${routeName}`)) next = `${next.trimEnd()}\n\n${routeBlock}\n`;
+  if (next !== current && !dryRun) await writeFile(routePath, next, "utf8");
+  return next !== current ? ["routes/api.php"] : [];
+}
+
+async function registerGoGinRoutes(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const mainPath = join(root, "cmd", "api", "main.go");
+  if (!(await exists(mainPath))) return [];
+  const className = toPascalCase(entity.name);
+  const current = await readFile(mainPath, "utf8");
+  let next = current;
+  if (!next.includes(`Register${className}Routes`)) {
+    next = next.replace(/\n\s*if err := router\.Run\(\);/, `\n\thandler.Register${className}Routes(router)\n\n\tif err := router.Run();`);
+  }
+  if (next !== current && !dryRun) await writeFile(mainPath, next, "utf8");
+  return next !== current ? ["cmd/api/main.go"] : [];
+}
+
+async function registerRailsRoutes(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const routePath = join(root, "config", "routes.rb");
+  if (!(await exists(routePath))) return [];
+  const routeName = pluralize(toKebabCase(entity.name)).replace(/-/g, "_");
+  const current = await readFile(routePath, "utf8");
+  const line = `  resources :${routeName}`;
+  const next = current.includes(line) ? current : current.replace(/\nend/, `\n${line}\nend`);
+  if (next !== current && !dryRun) await writeFile(routePath, next, "utf8");
+  return next !== current ? ["config/routes.rb"] : [];
+}
+
+async function registerKtorRoutes(root: string, entity: EntityConfig, dryRun: boolean): Promise<string[]> {
+  const appPath = await findFirstFile(root, "Application.kt");
+  if (!appPath) return [];
+  const className = toPascalCase(entity.name);
+  const current = await readFile(appPath, "utf8");
+  let next = current;
+  if (!next.includes(`register${className}Routes`)) {
+    const packageName = packageNameFromKotlinApplication(current);
+    const importLine = `import ${packageName}.presentation.routes.register${className}Routes`;
+    if (packageName && !next.includes(importLine)) next = next.replace(/\nimport /, `\n${importLine}\nimport `);
+    next = next.replace(/routing\s*\{\n/, `routing {\n        register${className}Routes()\n`);
+  }
+  if (next !== current && !dryRun) await writeFile(appPath, next, "utf8");
+  return next !== current ? [toRelativePath(root, appPath)] : [];
+}
+
+function packageNameFromKotlinApplication(content: string): string {
+  return content.match(/^package\s+([^\n]+)/m)?.[1]?.trim() ?? "";
 }
 
 async function updatePrismaSchema(root: string, entity: EntityConfig, dryRun: boolean): Promise<boolean> {

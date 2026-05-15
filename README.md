@@ -274,6 +274,8 @@ Schema upgrade currently performs safe additive changes for generated backend pr
 
 - Detects new fields from the SQL schema
 - Patches backend entity/model files for Express, NestJS, FastAPI, Django, Spring Boot, ASP.NET Core, Laravel, Gin, Rails, and Ktor
+- Creates new CRUD layers for new tables in generated NestJS, FastAPI, Django, Spring Boot, ASP.NET Core, Laravel, Gin, Rails, and Ktor projects
+- Updates module/router/route registration for newly created backend entities where the framework requires it
 - For TypeScript Express, also patches Zod/Joi/class-validator validation schemas when present
 - For TypeScript Express, also patches create use cases so new fields are copied from input
 - For TypeScript Express, also patches Prisma models when `prisma/schema.prisma` exists
