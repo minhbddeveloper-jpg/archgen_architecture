@@ -539,6 +539,148 @@ test("upgrades an existing Express project from a changed SQL schema", () => {
   }
 });
 
+test("upgrades existing generated backend entities from a changed SQL schema", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+  const sqlPath = join(outputRoot, "schema.sql");
+  const cases = [
+    {
+      name: "nestjs-api",
+      language: "typescript",
+      framework: "nestjs",
+      file: "src/modules/students/domain/Student.ts",
+      expected: [/phone\?: string/, /age\?: number/]
+    },
+    {
+      name: "fastapi-api",
+      language: "python",
+      framework: "fastapi",
+      file: "app/domain/models/student.py",
+      expected: [/phone: str \| None = None/, /age: float \| None = None/]
+    },
+    {
+      name: "django-api",
+      language: "python",
+      framework: "django",
+      file: "domain/models/student.py",
+      expected: [/phone: str/, /age: float/]
+    },
+    {
+      name: "spring-api",
+      language: "java",
+      framework: "spring",
+      file: "src/main/java/com/example/spring/api/domain/entities/Student.java",
+      expected: [/private String phone/, /private Double age/]
+    },
+    {
+      name: "dotnet-api",
+      language: "csharp",
+      framework: "aspnetcore",
+      file: "Domain/Entities/Student.cs",
+      expected: [/public string\? Phone/, /public decimal Age/]
+    },
+    {
+      name: "laravel-api",
+      language: "php",
+      framework: "laravel",
+      file: "app/Domain/Entities/Student.php",
+      expected: [/public \?string \$phone/, /public \?float \$age/]
+    },
+    {
+      name: "gin-api",
+      language: "go",
+      framework: "gin",
+      file: "internal/domain/student.go",
+      expected: [/Phone string `json:"phone"`/, /Age float64 `json:"age"`/]
+    },
+    {
+      name: "rails-api",
+      language: "ruby",
+      framework: "rails",
+      file: "app/domain/entities/student.rb",
+      expected: [/:phone/, /:age/]
+    },
+    {
+      name: "ktor-api",
+      language: "kotlin",
+      framework: "ktor",
+      file: "src/main/kotlin/com/example/ktor/api/domain/entities/Student.kt",
+      expected: [/val phone: String\? = null/, /val age: Double\? = null/]
+    }
+  ];
+
+  try {
+    writeFileSync(sqlPath, `CREATE TABLE students (
+  id uuid primary key,
+  name varchar(120) not null,
+  phone varchar(40),
+  age int
+);
+`, "utf8");
+
+    for (const stack of cases) {
+      execFileSync(
+        process.execPath,
+        [
+          "dist/bin/arxgen.js",
+          "create",
+          "--name",
+          stack.name,
+          "--language",
+          stack.language,
+          "--framework",
+          stack.framework,
+          "--entity",
+          "student",
+          "--field",
+          "name:string",
+          "--out",
+          outputRoot
+        ],
+        { cwd: process.cwd(), stdio: "pipe" }
+      );
+
+      const projectRoot = join(outputRoot, stack.name);
+      const preview = execFileSync(
+        process.execPath,
+        [
+          join(process.cwd(), "dist/bin/arxgen.js"),
+          "upgrade",
+          "schema",
+          "--from-sql",
+          sqlPath,
+          "--project",
+          projectRoot,
+          "--dry-run"
+        ],
+        { cwd: process.cwd(), stdio: "pipe", encoding: "utf8" }
+      );
+      assert.match(preview, /Schema upgrade preview/);
+      assert.match(preview, /\+ phone:string\?/);
+
+      execFileSync(
+        process.execPath,
+        [
+          join(process.cwd(), "dist/bin/arxgen.js"),
+          "upgrade",
+          "schema",
+          "--from-sql",
+          sqlPath,
+          "--project",
+          projectRoot
+        ],
+        { cwd: process.cwd(), stdio: "pipe" }
+      );
+
+      const content = readNormalized(join(projectRoot, stack.file));
+      for (const expected of stack.expected) {
+        assert.match(content, expected, `${stack.framework} should patch ${stack.file}`);
+      }
+    }
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
 test("generates full CRUD layers for all backend stacks", () => {
   const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
   const cases = [

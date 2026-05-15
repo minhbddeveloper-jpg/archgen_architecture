@@ -1,5 +1,5 @@
 import { access, readFile, readdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { Project, QuoteKind, SyntaxKind } from "ts-morph";
 import { GeneratedFile } from "../domain/generatedFile.js";
 import { EntityConfig, EntityFieldConfig, FieldType, ValidationProvider } from "../domain/projectConfig.js";
@@ -40,8 +40,8 @@ export interface UpgradeSchemaResult extends ExtendProjectResult {
 }
 
 interface ProjectDetection {
-  language: "typescript";
-  framework: "express";
+  language: string;
+  framework: string;
 }
 
 export class ProjectExtender {
@@ -50,6 +50,7 @@ export class ProjectExtender {
   async addEntity(projectRoot: string, request: AddEntityRequest, options: WriteFilesOptions = {}): Promise<ExtendProjectResult> {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
+    ensureTypeScriptExpress(detection);
     const existingEntities = await detectExistingEntities(root);
     const className = toPascalCase(request.entity.name);
     if (existingEntities.includes(className) && !options.overwrite) {
@@ -97,6 +98,7 @@ export class ProjectExtender {
   async addUseCase(projectRoot: string, request: AddUseCaseRequest, options: WriteFilesOptions = {}): Promise<ExtendProjectResult> {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
+    ensureTypeScriptExpress(detection);
     const className = toPascalCase(request.name.endsWith("UseCase") ? request.name : `${request.name}UseCase`);
     const files: GeneratedFile[] = [
       {
@@ -123,6 +125,9 @@ export class ProjectExtender {
   async upgradeSchema(projectRoot: string, request: UpgradeSchemaRequest, options: WriteFilesOptions = {}): Promise<UpgradeSchemaResult> {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
+    if (detection.language !== "typescript" || detection.framework !== "express") {
+      return upgradeSchemaForDetectedStack(root, detection, request, options);
+    }
     const updatedFiles = new Set<string>();
     const changes: SchemaUpgradeChange[] = [];
     let filesWritten = 0;
@@ -227,17 +232,45 @@ async function detectProject(root: string): Promise<ProjectDetection> {
   const packageJsonPath = join(root, "package.json");
   const mainPath = join(root, "src", "main.ts");
 
-  if (!(await exists(packageJsonPath)) || !(await exists(mainPath))) {
-    throw new Error("Unable to detect a supported project. Run this command from a generated TypeScript Express project root or pass --project <dir>.");
+  if ((await exists(packageJsonPath)) && (await exists(mainPath))) {
+    const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    if (dependencies.express) return { language: "typescript", framework: "express" };
+    if (dependencies["@nestjs/core"]) return { language: "typescript", framework: "nestjs" };
   }
 
-  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-  if (!dependencies.express) {
-    throw new Error("Only TypeScript Express project extension is supported in this release.");
+  if ((await exists(join(root, "pyproject.toml"))) && (await exists(join(root, "app", "main.py")))) {
+    return { language: "python", framework: "fastapi" };
+  }
+  if ((await exists(join(root, "manage.py"))) && (await exists(join(root, "config", "urls.py")))) {
+    return { language: "python", framework: "django" };
+  }
+  if (await exists(join(root, "pom.xml"))) {
+    return { language: "java", framework: "spring" };
+  }
+  if ((await exists(join(root, "Program.cs"))) && (await findFirstFile(root, ".csproj"))) {
+    return { language: "csharp", framework: "aspnetcore" };
+  }
+  if ((await exists(join(root, "composer.json"))) && (await exists(join(root, "routes", "api.php")))) {
+    return { language: "php", framework: "laravel" };
+  }
+  if ((await exists(join(root, "go.mod"))) && (await exists(join(root, "cmd", "api", "main.go")))) {
+    return { language: "go", framework: "gin" };
+  }
+  if ((await exists(join(root, "Gemfile"))) && (await exists(join(root, "config", "routes.rb")))) {
+    return { language: "ruby", framework: "rails" };
+  }
+  if ((await exists(join(root, "build.gradle.kts"))) && (await exists(join(root, "settings.gradle.kts")))) {
+    return { language: "kotlin", framework: "ktor" };
   }
 
-  return { language: "typescript", framework: "express" };
+  throw new Error("Unable to detect a supported generated project. Pass --project <dir> pointing to a generated arxgen project.");
+}
+
+function ensureTypeScriptExpress(detection: ProjectDetection): void {
+  if (detection.language !== "typescript" || detection.framework !== "express") {
+    throw new Error("This add command currently supports generated TypeScript Express projects. Use `arxgen upgrade schema` for additive schema upgrades on other generated backend stacks.");
+  }
 }
 
 async function detectExistingEntities(root: string): Promise<string[]> {
@@ -248,6 +281,74 @@ async function detectExistingEntities(root: string): Promise<string[]> {
 
   const entries = await readdir(entityDir, { withFileTypes: true });
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".ts")).map((entry) => entry.name.replace(/\.ts$/, ""));
+}
+
+async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDetection, request: UpgradeSchemaRequest, options: WriteFilesOptions): Promise<UpgradeSchemaResult> {
+  const updatedFiles = new Set<string>();
+  const changes: SchemaUpgradeChange[] = [];
+
+  for (const entity of request.entities) {
+    const patch = await patchStackEntity(root, detection, entity, Boolean(options.dryRun));
+    if (!patch || patch.addedFields.length === 0) {
+      continue;
+    }
+
+    for (const file of patch.updatedFiles) {
+      updatedFiles.add(file);
+    }
+    changes.push({
+      entity: toPascalCase(entity.name),
+      addedFields: patch.addedFields,
+      created: false
+    });
+  }
+
+  return {
+    projectRoot: root,
+    framework: detection.framework,
+    language: detection.language,
+    filesWritten: 0,
+    dryRun: options.dryRun ?? false,
+    updatedFiles: [...updatedFiles],
+    changes
+  };
+}
+
+async function patchStackEntity(root: string, detection: ProjectDetection, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const className = toPascalCase(entity.name);
+  const moduleName = toSnakeCase(entity.name);
+
+  if (detection.framework === "nestjs") {
+    return patchTypeScriptLikeFile(root, `src/modules/${pluralize(toKebabCase(entity.name))}/domain/${className}.ts`, entity, dryRun);
+  }
+  if (detection.framework === "fastapi") {
+    return patchPythonFastApiModel(root, `app/domain/models/${moduleName}.py`, entity, dryRun);
+  }
+  if (detection.framework === "django") {
+    return patchDjangoFiles(root, entity, dryRun);
+  }
+  if (detection.framework === "spring") {
+    const entityPath = await findFirstFile(root, `${className}.java`, (path) => path.includes(`${join("domain", "entities")}`));
+    return entityPath ? patchJavaEntity(root, entityPath, entity, dryRun) : undefined;
+  }
+  if (detection.framework === "aspnetcore") {
+    return patchCSharpEntity(root, `Domain/Entities/${className}.cs`, entity, dryRun);
+  }
+  if (detection.framework === "laravel") {
+    return patchPhpEntity(root, `app/Domain/Entities/${className}.php`, entity, dryRun);
+  }
+  if (detection.framework === "gin") {
+    return patchGoEntity(root, `internal/domain/${moduleName}.go`, entity, dryRun);
+  }
+  if (detection.framework === "rails") {
+    return patchRubyEntity(root, `app/domain/entities/${moduleName}.rb`, entity, dryRun);
+  }
+  if (detection.framework === "ktor") {
+    const entityPath = await findFirstFile(root, `${className}.kt`, (path) => path.includes(`${join("domain", "entities")}`));
+    return entityPath ? patchKotlinEntity(root, entityPath, entity, dryRun) : undefined;
+  }
+
+  return undefined;
 }
 
 async function updatePrismaSchema(root: string, entity: EntityConfig, dryRun: boolean): Promise<boolean> {
@@ -470,6 +571,123 @@ async function patchPrismaModel(root: string, entity: EntityConfig, fields: Enti
     await writeFile(schemaPath, next, "utf8");
   }
   return true;
+}
+
+async function patchTypeScriptLikeFile(root: string, relativePath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const path = join(root, relativePath);
+  if (!(await exists(path))) return undefined;
+  const current = await readFile(path, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\n\\s+${toCamelCase(field.name)}[?:]`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const insert = addedFields.map((field) => `  ${toCamelCase(field.name)}${field.required === false ? "?" : ""}: ${toTypeScriptType(field.type)};`).join("\n");
+  const next = current.replace(/\n\}/, `\n${insert}\n}`);
+  if (!dryRun) await writeFile(path, next, "utf8");
+  return { updatedFiles: [relativePath], addedFields };
+}
+
+async function patchPythonFastApiModel(root: string, relativePath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const path = join(root, relativePath);
+  if (!(await exists(path))) return undefined;
+  const current = await readFile(path, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\n\\s+${toSnakeCase(field.name)}:`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const createInsert = addedFields.map((field) => `    ${toSnakeCase(field.name)}: ${toPythonType(field)}${field.required === false ? " | None = None" : ""}`).join("\n");
+  const updateInsert = addedFields.map((field) => `    ${toSnakeCase(field.name)}: ${toPythonType(field)} | None = None`).join("\n");
+  let next = current.replace(/(\n\n\nclass [A-Za-z0-9]+Update\(BaseModel\):)/, `\n${createInsert}$1`);
+  next = next.replace(/(\n\n\nclass [A-Za-z0-9]+\([A-Za-z0-9]+Create\):)/, `\n${updateInsert}$1`);
+  if (!dryRun) await writeFile(path, next, "utf8");
+  return { updatedFiles: [relativePath], addedFields };
+}
+
+async function patchDjangoFiles(root: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const modelPath = `domain/models/${toSnakeCase(entity.name)}.py`;
+  const serializerPath = `presentation/serializers/${toSnakeCase(entity.name)}_serializer.py`;
+  const modelFullPath = join(root, modelPath);
+  if (!(await exists(modelFullPath))) return undefined;
+  const currentModel = await readFile(modelFullPath, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\n\\s+${toSnakeCase(field.name)}:`).test(currentModel));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const modelInsert = addedFields.map((field) => `    ${toSnakeCase(field.name)}: ${toPythonType(field)}`).join("\n");
+  if (!dryRun) await writeFile(modelFullPath, currentModel.replace(/\n$/, `\n${modelInsert}\n`), "utf8");
+  const updatedFiles = [modelPath];
+  const serializerFullPath = join(root, serializerPath);
+  if (await exists(serializerFullPath)) {
+    const serializer = await readFile(serializerFullPath, "utf8");
+    const serializerInsert = addedFields.map((field) => `        "${toSnakeCase(field.name)}": record.get("${toSnakeCase(field.name)}")`).join(",\n");
+    if (!dryRun) await writeFile(serializerFullPath, serializer.replace(/(\n\s+\})/, `,\n${serializerInsert}$1`), "utf8");
+    updatedFiles.push(serializerPath);
+  }
+  return { updatedFiles, addedFields };
+}
+
+async function patchJavaEntity(root: string, entityPath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] }> {
+  const current = await readFile(entityPath, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\b${toCamelCase(field.name)}\\b`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const fieldsInsert = addedFields.map((field) => `  private ${toJavaType(field)} ${toCamelCase(field.name)};`).join("\n");
+  const accessorInsert = addedFields.map((field) => `  public ${toJavaType(field)} get${toPascalCase(field.name)}() { return ${toCamelCase(field.name)}; }
+  public void set${toPascalCase(field.name)}(${toJavaType(field)} ${toCamelCase(field.name)}) { this.${toCamelCase(field.name)} = ${toCamelCase(field.name)}; }`).join("\n\n");
+  let next = current.replace(/(\n\n\s+public String getId\(\))/, `\n${fieldsInsert}$1`);
+  next = next.replace(/\n\}$/, `\n${accessorInsert}\n}`);
+  if (!dryRun) await writeFile(entityPath, next, "utf8");
+  return { updatedFiles: [toRelativePath(root, entityPath)], addedFields };
+}
+
+async function patchCSharpEntity(root: string, relativePath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const path = join(root, relativePath);
+  if (!(await exists(path))) return undefined;
+  const current = await readFile(path, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\b${toPascalCase(field.name)}\\b`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const insert = addedFields.map((field) => `    public ${toCSharpType(field)}${field.required === false && toCSharpType(field) === "string" ? "?" : ""} ${toPascalCase(field.name)} { get; set; }`).join("\n");
+  const next = current.replace(/\n\}/, `\n${insert}\n}`);
+  if (!dryRun) await writeFile(path, next, "utf8");
+  return { updatedFiles: [relativePath], addedFields };
+}
+
+async function patchPhpEntity(root: string, relativePath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const path = join(root, relativePath);
+  if (!(await exists(path))) return undefined;
+  const current = await readFile(path, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\$${toCamelCase(field.name)}\\b`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const insert = addedFields.map((field) => `    public ${field.required === false ? "?" : ""}${toPhpType(field)} $${toCamelCase(field.name)} = null;`).join("\n");
+  const next = current.replace(/(\n\s+public function __construct)/, `\n${insert}$1`);
+  if (!dryRun) await writeFile(path, next, "utf8");
+  return { updatedFiles: [relativePath], addedFields };
+}
+
+async function patchGoEntity(root: string, relativePath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const path = join(root, relativePath);
+  if (!(await exists(path))) return undefined;
+  const current = await readFile(path, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\b${toPascalCase(field.name)}\\b`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const insert = addedFields.map((field) => `\t${toPascalCase(field.name)} ${toGoType(field)} \`json:"${toCamelCase(field.name)}"\``).join("\n");
+  const next = current.replace(/\n\}/, `\n${insert}\n}`);
+  if (!dryRun) await writeFile(path, next, "utf8");
+  return { updatedFiles: [relativePath], addedFields };
+}
+
+async function patchRubyEntity(root: string, relativePath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] } | undefined> {
+  const path = join(root, relativePath);
+  if (!(await exists(path))) return undefined;
+  const current = await readFile(path, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`:${toSnakeCase(field.name)}\\b`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const next = current.replace(/attr_accessor ([^\n]+)/, (match) => `${match}, ${addedFields.map((field) => `:${toSnakeCase(field.name)}`).join(", ")}`);
+  if (!dryRun) await writeFile(path, next, "utf8");
+  return { updatedFiles: [relativePath], addedFields };
+}
+
+async function patchKotlinEntity(root: string, entityPath: string, entity: EntityConfig, dryRun: boolean): Promise<{ updatedFiles: string[]; addedFields: EntityFieldConfig[] }> {
+  const current = await readFile(entityPath, "utf8");
+  const addedFields = entity.fields.filter((field) => !new RegExp(`\\b${toCamelCase(field.name)}:`).test(current));
+  if (addedFields.length === 0) return { updatedFiles: [], addedFields };
+  const insert = addedFields.map((field) => `    val ${toCamelCase(field.name)}: ${toKotlinType(field)}${field.required === false ? "? = null" : ""}`).join(",\n");
+  const next = current.replace(/\n\)/, `,\n${insert}\n)`);
+  if (!dryRun) await writeFile(entityPath, next, "utf8");
+  return { updatedFiles: [toRelativePath(root, entityPath)], addedFields };
 }
 
 async function registerTypeScriptExpressRoute(root: string, entity: EntityConfig, dryRun: boolean): Promise<boolean> {
@@ -820,6 +1038,33 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+async function findFirstFile(root: string, fileNameOrExtension: string, predicate?: (path: string) => boolean): Promise<string | undefined> {
+  const entries = await readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name === "dist" || entry.name === ".git") {
+        continue;
+      }
+      const nested = await findFirstFile(path, fileNameOrExtension, predicate);
+      if (nested) return nested;
+      continue;
+    }
+
+    const matches = fileNameOrExtension.startsWith(".")
+      ? entry.name.endsWith(fileNameOrExtension)
+      : entry.name === fileNameOrExtension;
+    if (matches && (!predicate || predicate(path))) {
+      return path;
+    }
+  }
+  return undefined;
+}
+
+function toRelativePath(root: string, path: string): string {
+  return relative(root, path).replace(/\\/g, "/");
+}
+
 function toEntityView(entity: EntityConfig) {
   const className = toPascalCase(entity.name);
   return {
@@ -891,8 +1136,48 @@ function toKebabCase(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "app";
 }
 
+function toSnakeCase(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "field";
+}
+
 function pluralize(value: string): string {
   if (value.endsWith("y")) return `${value.slice(0, -1)}ies`;
   if (value.endsWith("s")) return `${value}es`;
   return `${value}s`;
+}
+
+function toPythonType(field: EntityFieldConfig): string {
+  if (field.type === "number") return "float";
+  if (field.type === "boolean") return "bool";
+  return "str";
+}
+
+function toJavaType(field: EntityFieldConfig): string {
+  if (field.type === "number") return "Double";
+  if (field.type === "boolean") return "Boolean";
+  return "String";
+}
+
+function toCSharpType(field: EntityFieldConfig): string {
+  if (field.type === "number") return "decimal";
+  if (field.type === "boolean") return "bool";
+  return "string";
+}
+
+function toGoType(field: EntityFieldConfig): string {
+  if (field.type === "number") return "float64";
+  if (field.type === "boolean") return "bool";
+  return "string";
+}
+
+function toKotlinType(field: EntityFieldConfig): string {
+  if (field.type === "number") return "Double";
+  if (field.type === "boolean") return "Boolean";
+  return "String";
+}
+
+function toPhpType(field: EntityFieldConfig): string {
+  if (field.type === "number") return "float";
+  if (field.type === "boolean") return "bool";
+  return "string";
 }

@@ -270,14 +270,14 @@ arxgen upgrade schema \
   --project ./generated/student-api
 ```
 
-Schema upgrade currently performs safe additive changes for generated TypeScript Express projects:
+Schema upgrade currently performs safe additive changes for generated backend projects:
 
 - Detects new fields from the SQL schema
-- Patches domain entities
-- Patches Zod/Joi/class-validator validation schemas when present
-- Patches create use cases so new fields are copied from input
-- Patches Prisma models when `prisma/schema.prisma` exists
-- Creates new entities if the SQL schema contains new tables
+- Patches backend entity/model files for Express, NestJS, FastAPI, Django, Spring Boot, ASP.NET Core, Laravel, Gin, Rails, and Ktor
+- For TypeScript Express, also patches Zod/Joi/class-validator validation schemas when present
+- For TypeScript Express, also patches create use cases so new fields are copied from input
+- For TypeScript Express, also patches Prisma models when `prisma/schema.prisma` exists
+- For TypeScript Express, creates new entities if the SQL schema contains new tables
 - Does not delete or rename existing fields automatically
 
 Useful flags:
