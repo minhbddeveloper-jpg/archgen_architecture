@@ -13,6 +13,8 @@ CRUD generation currently uses in-memory repositories. This provides a practical
 
 For the recommended architecture of each plugin, see [Standard Architecture Design](docs/standard-architecture-design.md).
 
+For planned upgrades such as `archgen add entity`, DTO generation, validation, auth, relations, NestJS support, and the interactive wizard, see [Upgrade Roadmap](docs/upgrade-roadmap.md).
+
 ## Supported Platforms
 
 | Language | Framework | Plugin | Notes |
