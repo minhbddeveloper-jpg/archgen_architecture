@@ -90,6 +90,61 @@ arxgen is explicit about generated scaffold versus production-ready implementati
 - Go Gin
 - Ruby Rails
 - Kotlin Ktor
+## Stack Support Matrix
+
+arxgen supports multiple stacks, but not every stack has the same production confidence level yet.
+
+Status meaning:
+
+- **Stable**: generated project is expected to build/run and has automated tests.
+- **Beta**: core scaffolding works, but some advanced features are still partial.
+- **Experimental**: basic scaffold exists, but generated output needs more validation before production use.
+- **Planned**: not fully implemented yet.
+
+| Stack | Create Project | CRUD | ORM / DB | Add Entity | SQL Import | Schema Upgrade | Generated App Test | Status |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| TypeScript Express | ✅ | ✅ | Partial | ✅ | ✅ | ✅ | ✅ | Stable |
+| TypeScript NestJS | ✅ | ✅ | Partial | Partial | Partial | Partial | Planned | Beta |
+| TypeScript React | ✅ | Partial | N/A | N/A | N/A | N/A | Planned | Beta |
+| Python FastAPI | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Python Django | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Java Spring Boot | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| C# ASP.NET Core | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Go Gin | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| PHP Laravel | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Ruby Rails | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Kotlin Ktor | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+
+### Recommended production path
+
+For production-oriented usage, start with:
+
+1. **TypeScript Express** — strongest current support.
+2. **TypeScript NestJS** — recommended for structured backend projects, currently in beta.
+3. **TypeScript React** — useful for frontend/fullstack scaffolding.
+
+Other stacks are available as scaffolding targets, but should be treated as experimental until they have generated-app build/e2e validation.
+
+### Promotion rules
+
+A stack can move from **Experimental** to **Beta** when:
+
+- base project generation works;
+- CRUD layers are generated consistently;
+- DTO/request/response files are generated;
+- validation files are generated;
+- ORM/database artifacts are generated;
+- snapshot tests exist.
+
+A stack can move from **Beta** to **Stable** when:
+
+- generated project builds successfully in CI;
+- generated project can start successfully;
+- generated CRUD endpoints are tested through HTTP/e2e tests;
+- `add entity` does not break existing project structure;
+- SQL import is validated for common table/foreign-key cases;
+- schema upgrade has at least additive-change support;
+- generated README includes stack-specific run commands.
 
 ## Useful Commands
 
