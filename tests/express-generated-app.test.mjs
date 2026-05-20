@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
+import { randomInt } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +20,19 @@ function spawnNpm(args, options) {
   return spawn("npm", args, options);
 }
 
+function killProcessTree(childProcess) {
+  if (!childProcess?.pid) return;
+  if (process.platform === "win32") {
+    try {
+      execFileSync("taskkill.exe", ["/pid", String(childProcess.pid), "/t", "/f"], { stdio: "ignore" });
+    } catch {
+      // The process may already have exited.
+    }
+    return;
+  }
+  childProcess.kill();
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -37,7 +51,7 @@ async function waitForHealth(port) {
 
 test("generated TypeScript Express app installs, builds, starts, and handles CRUD", { skip: process.env.ARXGEN_RUN_GENERATED_E2E !== "1" }, async () => {
   const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-e2e-"));
-  const port = 43137;
+  const port = randomInt(43000, 48000);
   let server;
 
   try {
@@ -85,15 +99,32 @@ test("generated TypeScript Express app installs, builds, starts, and handles CRU
     const payload = await created.json();
     assert.equal(payload.success, true);
     assert.equal(payload.data.name, "Minh");
+    const id = payload.data.id;
 
     const list = await fetch(`http://127.0.0.1:${port}/students`);
     assert.equal(list.status, 200);
     const listPayload = await list.json();
     assert.equal(listPayload.success, true);
-    assert.equal(listPayload.data.data.length, 1);
+    assert.equal(listPayload.data.data.some((student) => student.id === id), true);
+
+    const updated = await fetch(`http://127.0.0.1:${port}/students/${id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Minh Bui" })
+    });
+    assert.equal(updated.status, 200);
+    const updatePayload = await updated.json();
+    assert.equal(updatePayload.success, true);
+    assert.equal(updatePayload.data.name, "Minh Bui");
+
+    const deleted = await fetch(`http://127.0.0.1:${port}/students/${id}`, { method: "DELETE" });
+    assert.equal(deleted.status, 204);
+
+    const afterDelete = await fetch(`http://127.0.0.1:${port}/students/${id}`);
+    assert.equal(afterDelete.status, 404);
   } finally {
     if (server) {
-      server.kill();
+      killProcessTree(server);
       await wait(250);
     }
     rmSync(outputRoot, { recursive: true, force: true });

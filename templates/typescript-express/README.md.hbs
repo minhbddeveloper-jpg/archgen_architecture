@@ -2,9 +2,58 @@
 
 Generated TypeScript Express API starter.
 
-## Run
+## Setup
 
 ```bash
 npm install
+{{#if orm}}
+npx prisma generate
+{{/if}}
+```
+
+## Development
+
+```bash
 npm run dev
 ```
+
+## Build
+
+```bash
+npm run build
+```
+
+{{#if database}}
+## Database
+
+Copy `.env.example` to `.env` or export the variables in your shell.
+
+```bash
+docker compose up -d db
+{{#if orm}}
+npx prisma migrate dev --name init
+{{/if}}
+```
+{{/if}}
+
+## Environment
+
+```bash
+PORT=3000
+{{#if database}}DATABASE_URL=postgres://arxgen:arxgen@localhost:5432/arxgen{{/if}}
+{{#if auth}}JWT_SECRET=replace-with-a-long-random-secret{{/if}}
+```
+
+{{#if hasEntities}}
+## API Examples
+
+{{#each entities}}
+```bash
+curl http://localhost:3000/{{routeName}}
+curl -X POST http://localhost:3000/{{routeName}} \
+  -H "content-type: application/json" \
+  -d '{ {{#each fields}}"{{camelName}}": "{{camelName}}"{{#unless @last}}, {{/unless}}{{/each}} }'
+```
+
+{{/each}}
+{{/if}}

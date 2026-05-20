@@ -1,6 +1,6 @@
 {
   "name": "arxgen",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Multi-language Clean Architecture project generator.",
   "type": "module",
   "bin": {

@@ -292,6 +292,18 @@ function toTypeScriptType(type: FieldType): string {
   return "string";
 }
 
+function prismaDomainValue(field: FieldView): string {
+  const value = `value.${field.camelName}`;
+  if (!field.required) {
+    if (field.tsType === "number") return `typeof ${value} === "number" ? ${value} : undefined`;
+    if (field.tsType === "boolean") return `typeof ${value} === "boolean" ? ${value} : undefined`;
+    return `typeof ${value} === "string" ? ${value} : undefined`;
+  }
+  if (field.tsType === "number") return `Number(${value})`;
+  if (field.tsType === "boolean") return `Boolean(${value})`;
+  return `String(${value})`;
+}
+
 function toPythonType(type: FieldType): string {
   if (type === "number") return "float";
   if (type === "boolean") return "bool";
@@ -338,24 +350,23 @@ function indent(value: string, spaces: number): string {
 function typescriptExpressCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {
   const root = contextString(context, "projectSlug");
   const validation = contextString(context, "validation");
+  const usesPrisma = contextString(context, "orm").toLowerCase() === "prisma";
   const fieldLines = entity.fields.map((field) => `  ${field.camelName}${field.required ? "" : "?"}: ${field.tsType};`).join("\n");
   const defaultInput = entity.fields.map((field) => `      ${field.camelName}: input.${field.camelName}`).join(",\n");
+  const prismaSelect = entity.fields.map((field) => `    ${field.camelName}: ${prismaDomainValue(field)}`).join(",\n");
+  const prismaCreateData = entity.fields.map((field) => `      ${field.camelName}: record.${field.camelName}`).join(",\n");
+  const prismaUpdateData = entity.fields.map((field) => `      ${field.camelName}: record.${field.camelName}`).join(",\n");
+  const repositoryPort = usesPrisma
+    ? `import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
-  return [
-    {
-      path: `${root}/src/domain/entities/${entity.className}.ts`,
-      content: `export interface ${entity.className} {
-  id: string;
-${fieldLines}
+export interface ${entity.className}RepositoryPort {
+  findAll(): Promise<${entity.className}[]>;
+  findById(id: string): Promise<${entity.className} | undefined>;
+  save(record: ${entity.className}): Promise<${entity.className}>;
+  delete(id: string): Promise<boolean>;
 }
-
-export type Create${entity.className}Input = Omit<${entity.className}, "id">;
-export type Update${entity.className}Input = Partial<Create${entity.className}Input>;
 `
-    },
-    {
-      path: `${root}/src/application/ports/${entity.camelName}RepositoryPort.ts`,
-      content: `import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
+    : `import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
 export interface ${entity.className}RepositoryPort {
   findAll(): ${entity.className}[];
@@ -363,11 +374,54 @@ export interface ${entity.className}RepositoryPort {
   save(record: ${entity.className}): ${entity.className};
   delete(id: string): boolean;
 }
+`;
+  const repositoryFile = usesPrisma
+    ? `import { PrismaClient } from "@prisma/client";
+import { ${entity.className}RepositoryPort } from "../../application/ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
+
+const prisma = new PrismaClient();
+
+export class ${entity.className}Repository implements ${entity.className}RepositoryPort {
+  async findAll(): Promise<${entity.className}[]> {
+    const records = await prisma.${entity.camelName}.findMany({ orderBy: { id: "asc" } });
+    return records.map(toDomain);
+  }
+
+  async findById(id: string): Promise<${entity.className} | undefined> {
+    const record = await prisma.${entity.camelName}.findUnique({ where: { id } });
+    return record ? toDomain(record) : undefined;
+  }
+
+  async save(record: ${entity.className}): Promise<${entity.className}> {
+    const saved = await prisma.${entity.camelName}.upsert({
+      where: { id: record.id },
+      create: {
+        id: record.id${prismaCreateData ? ",\n" + prismaCreateData : ""}
+      },
+      update: {${prismaUpdateData ? "\n" + prismaUpdateData + "\n      " : ""}}
+    });
+    return toDomain(saved);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      await prisma.${entity.camelName}.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function toDomain(record: unknown): ${entity.className} {
+  const value = record as Record<string, unknown>;
+  return {
+    id: String(value.id)${prismaSelect ? ",\n" + prismaSelect : ""}
+  };
+}
 `
-    },
-    {
-      path: `${root}/src/infrastructure/repositories/${entity.camelName}Repository.ts`,
-      content: `import { ${entity.className}RepositoryPort } from "../../application/ports/${entity.camelName}RepositoryPort.js";
+    : `import { ${entity.className}RepositoryPort } from "../../application/ports/${entity.camelName}RepositoryPort.js";
 import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
 export class ${entity.className}Repository implements ${entity.className}RepositoryPort {
@@ -390,11 +444,31 @@ export class ${entity.className}Repository implements ${entity.className}Reposit
     return this.records.delete(id);
   }
 }
+`;
+  const listUseCase = usesPrisma
+    ? `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { PaginationQueryDto } from "../dtos/${entity.camelName}Dto.js";
+import { PaginatedResponse } from "../../shared/apiResponse.js";
+import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
+
+export class List${entity.className}sUseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  async execute(query: PaginationQueryDto = {}): Promise<PaginatedResponse<${entity.className}>> {
+    const page = Math.max(Number(query.page ?? 1), 1);
+    const limit = Math.max(Number(query.limit ?? 10), 1);
+    const q = query.q?.toLowerCase();
+    const records = (await this.repository.findAll()).filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const start = (page - 1) * limit;
+
+    return {
+      data: records.slice(start, start + limit),
+      meta: { page, limit, total: records.length }
+    };
+  }
+}
 `
-    },
-    {
-      path: `${root}/src/application/use-cases/list${entity.className}sUseCase.ts`,
-      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+    : `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
 import { PaginationQueryDto } from "../dtos/${entity.camelName}Dto.js";
 import { PaginatedResponse } from "../../shared/apiResponse.js";
 import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
@@ -415,11 +489,20 @@ export class List${entity.className}sUseCase {
     };
   }
 }
+`;
+  const getUseCase = usesPrisma
+    ? `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
+
+export class Get${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(id: string): Promise<${entity.className} | undefined> {
+    return this.repository.findById(id);
+  }
+}
 `
-    },
-    {
-      path: `${root}/src/application/use-cases/get${entity.className}UseCase.ts`,
-      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+    : `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
 import { ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
 export class Get${entity.className}UseCase {
@@ -429,11 +512,24 @@ export class Get${entity.className}UseCase {
     return this.repository.findById(id);
   }
 }
+`;
+  const createUseCase = usesPrisma
+    ? `import { randomUUID } from "node:crypto";
+import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { Create${entity.className}Input, ${entity.className} } from "../../domain/entities/${entity.className}.js";
+
+export class Create${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(input: Create${entity.className}Input): Promise<${entity.className}> {
+    return this.repository.save({
+      id: randomUUID(),
+${defaultInput}
+    });
+  }
+}
 `
-    },
-    {
-      path: `${root}/src/application/use-cases/create${entity.className}UseCase.ts`,
-      content: `import { randomUUID } from "node:crypto";
+    : `import { randomUUID } from "node:crypto";
 import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
 import { Create${entity.className}Input, ${entity.className} } from "../../domain/entities/${entity.className}.js";
 
@@ -447,11 +543,25 @@ ${defaultInput}
     });
   }
 }
+`;
+  const updateUseCase = usesPrisma
+    ? `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+import { ${entity.className}, Update${entity.className}Input } from "../../domain/entities/${entity.className}.js";
+
+export class Update${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  async execute(id: string, input: Update${entity.className}Input): Promise<${entity.className} | undefined> {
+    const current = await this.repository.findById(id);
+    if (!current) {
+      return undefined;
+    }
+
+    return this.repository.save({ ...current, ...input, id });
+  }
+}
 `
-    },
-    {
-      path: `${root}/src/application/use-cases/update${entity.className}UseCase.ts`,
-      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+    : `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
 import { ${entity.className}, Update${entity.className}Input } from "../../domain/entities/${entity.className}.js";
 
 export class Update${entity.className}UseCase {
@@ -466,11 +576,19 @@ export class Update${entity.className}UseCase {
     return this.repository.save({ ...current, ...input, id });
   }
 }
+`;
+  const deleteUseCase = usesPrisma
+    ? `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+
+export class Delete${entity.className}UseCase {
+  constructor(private readonly repository: ${entity.className}RepositoryPort) {}
+
+  execute(id: string): Promise<boolean> {
+    return this.repository.delete(id);
+  }
+}
 `
-    },
-    {
-      path: `${root}/src/application/use-cases/delete${entity.className}UseCase.ts`,
-      content: `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
+    : `import { ${entity.className}RepositoryPort } from "../ports/${entity.camelName}RepositoryPort.js";
 
 export class Delete${entity.className}UseCase {
   constructor(private readonly repository: ${entity.className}RepositoryPort) {}
@@ -479,11 +597,74 @@ export class Delete${entity.className}UseCase {
     return this.repository.delete(id);
   }
 }
+`;
+  const controllerFile = usesPrisma
+    ? `import { Router } from "express";
+import { Create${entity.className}UseCase } from "../../application/use-cases/create${entity.className}UseCase.js";
+import { Delete${entity.className}UseCase } from "../../application/use-cases/delete${entity.className}UseCase.js";
+import { Get${entity.className}UseCase } from "../../application/use-cases/get${entity.className}UseCase.js";
+import { List${entity.className}sUseCase } from "../../application/use-cases/list${entity.className}sUseCase.js";
+import { Update${entity.className}UseCase } from "../../application/use-cases/update${entity.className}UseCase.js";
+import { ${entity.className}Repository } from "../../infrastructure/repositories/${entity.camelName}Repository.js";
+import { ok } from "../../shared/apiResponse.js";
+${validation ? `import { create${entity.className}Schema, update${entity.className}Schema } from "../validation/${entity.camelName}Schemas.js";` : ""}
+
+export function create${entity.className}Router(repository = new ${entity.className}Repository()): Router {
+  const router = Router();
+  const list${entity.className}s = new List${entity.className}sUseCase(repository);
+  const get${entity.className} = new Get${entity.className}UseCase(repository);
+  const create${entity.className} = new Create${entity.className}UseCase(repository);
+  const update${entity.className} = new Update${entity.className}UseCase(repository);
+  const delete${entity.className} = new Delete${entity.className}UseCase(repository);
+
+  router.get("/", async (request, response, next) => {
+    try {
+      response.json(ok("${entity.className} list loaded", await list${entity.className}s.execute({
+        page: Number(request.query.page ?? 1),
+        limit: Number(request.query.limit ?? 10),
+        q: typeof request.query.q === "string" ? request.query.q : undefined
+      })));
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.get("/:id", async (request, response, next) => {
+    try {
+      const record = await get${entity.className}.execute(request.params.id);
+      return record ? response.json(ok("${entity.className} loaded", record)) : response.sendStatus(404);
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.post("/", async (request, response, next) => {
+    try {
+      const payload = ${validation ? `create${entity.className}Schema.parse(request.body)` : "request.body"};
+      return response.status(201).json(ok("${entity.className} created", await create${entity.className}.execute(payload)));
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.put("/:id", async (request, response, next) => {
+    try {
+      const payload = ${validation ? `update${entity.className}Schema.parse(request.body)` : "request.body"};
+      const record = await update${entity.className}.execute(request.params.id, payload);
+      return record ? response.json(ok("${entity.className} updated", record)) : response.sendStatus(404);
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.delete("/:id", async (request, response, next) => {
+    try {
+      return (await delete${entity.className}.execute(request.params.id)) ? response.sendStatus(204) : response.sendStatus(404);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  return router;
+}
 `
-    },
-    {
-      path: `${root}/src/presentation/controllers/${entity.camelName}Controller.ts`,
-      content: `import { Router } from "express";
+    : `import { Router } from "express";
 import { Create${entity.className}UseCase } from "../../application/use-cases/create${entity.className}UseCase.js";
 import { Delete${entity.className}UseCase } from "../../application/use-cases/delete${entity.className}UseCase.js";
 import { Get${entity.className}UseCase } from "../../application/use-cases/get${entity.className}UseCase.js";
@@ -525,7 +706,51 @@ export function create${entity.className}Router(repository = new ${entity.classN
 
   return router;
 }
+`;
+
+  return [
+    {
+      path: `${root}/src/domain/entities/${entity.className}.ts`,
+      content: `export interface ${entity.className} {
+  id: string;
+${fieldLines}
+}
+
+export type Create${entity.className}Input = Omit<${entity.className}, "id">;
+export type Update${entity.className}Input = Partial<Create${entity.className}Input>;
 `
+    },
+    {
+      path: `${root}/src/application/ports/${entity.camelName}RepositoryPort.ts`,
+      content: repositoryPort
+    },
+    {
+      path: `${root}/src/infrastructure/repositories/${entity.camelName}Repository.ts`,
+      content: repositoryFile
+    },
+    {
+      path: `${root}/src/application/use-cases/list${entity.className}sUseCase.ts`,
+      content: listUseCase
+    },
+    {
+      path: `${root}/src/application/use-cases/get${entity.className}UseCase.ts`,
+      content: getUseCase
+    },
+    {
+      path: `${root}/src/application/use-cases/create${entity.className}UseCase.ts`,
+      content: createUseCase
+    },
+    {
+      path: `${root}/src/application/use-cases/update${entity.className}UseCase.ts`,
+      content: updateUseCase
+    },
+    {
+      path: `${root}/src/application/use-cases/delete${entity.className}UseCase.ts`,
+      content: deleteUseCase
+    },
+    {
+      path: `${root}/src/presentation/controllers/${entity.camelName}Controller.ts`,
+      content: controllerFile
     },
     {
       path: `${root}/src/presentation/routes/${entity.camelName}Routes.ts`,

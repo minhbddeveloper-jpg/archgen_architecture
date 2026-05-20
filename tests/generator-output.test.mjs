@@ -108,9 +108,37 @@ test("generates setup and ORM artifacts when requested", () => {
     assert.equal(existsSync(join(projectRoot, "src/presentation/routes/openApiRoutes.ts")), true);
     assert.equal(existsSync(join(projectRoot, "tests/unit/generated.test.ts")), true);
     assert.equal(existsSync(join(projectRoot, "tests/integration/http.test.ts")), true);
+
+    const repository = readNormalized(join(projectRoot, "src/infrastructure/repositories/studentRepository.ts"));
+    assert.match(repository, /PrismaClient/);
+    assert.match(repository, /prisma\.student\.findMany/);
+    assert.match(repository, /prisma\.student\.upsert/);
+
+    const controller = readNormalized(join(projectRoot, "src/presentation/controllers/studentController.ts"));
+    assert.match(controller, /await listStudents\.execute/);
+
+    const readme = readNormalized(join(projectRoot, "README.md"));
+    assert.match(readme, /npx prisma generate/);
+    assert.match(readme, /npx prisma migrate dev --name init/);
+    assert.match(readme, /API Examples/);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }
+});
+
+test("doctor reports actionable environment checks", () => {
+  const output = execFileSync(
+    process.execPath,
+    ["dist/bin/arxgen.js", "doctor"],
+    { cwd: process.cwd(), stdio: "pipe", encoding: "utf8" }
+  );
+
+  assert.match(output, /arxgen doctor/);
+  assert.match(output, /Node\.js version/);
+  assert.match(output, /npm version/);
+  assert.match(output, /Output folder permission/);
+  assert.match(output, /Docker availability/);
+  assert.match(output, /Database config/);
 });
 
 test("adds a new TypeScript Express entity to an existing project and merges routes", () => {
