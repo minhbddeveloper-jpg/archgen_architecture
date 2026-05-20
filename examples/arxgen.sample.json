@@ -1,24 +1,61 @@
 {
-  "name": "student-api",
+  "name": "school-api",
   "language": "typescript",
   "framework": "express",
   "architecture": "clean",
-  "languageVersion": "5.4.2",
-  "frameworkVersion": "4.18.3",
   "out": "./generated",
-  "packageVersions": {
-    "nodeTypesVersion": "20.11.30",
-    "tsxVersion": "4.7.1"
-  },
+  "database": "postgres",
+  "orm": "prisma",
+  "validation": "zod",
+  "auth": "jwt",
+  "docker": true,
+  "nginx": true,
+  "redis": true,
   "entities": [
     {
       "name": "student",
       "fields": [
-        { "name": "name", "type": "string" },
-        { "name": "email", "type": "string" },
-        { "name": "age", "type": "number", "required": false },
-        { "name": "active", "type": "boolean" }
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "unique": true
+        },
+        {
+          "name": "age",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "active",
+          "type": "boolean"
+        }
       ]
+    },
+    {
+      "name": "course",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "length": 160
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "source": "course",
+      "target": "student",
+      "kind": "many-to-one"
     }
   ]
 }
