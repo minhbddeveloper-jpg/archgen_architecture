@@ -1559,13 +1559,13 @@ function databaseService(database: string): string {
       MYSQL_PASSWORD: arxgen
       MYSQL_ROOT_PASSWORD: arxgen
     ports:
-      - "3306:3306"`;
+      - "\${MYSQL_PORT:-3306}:3306"`;
   }
   if (database === "mongodb") {
     return `  db:
     image: mongo:7
     ports:
-      - "27017:27017"`;
+      - "\${MONGO_PORT:-27017}:27017"`;
   }
   return `  db:
     image: postgres:16-alpine
@@ -1574,7 +1574,7 @@ function databaseService(database: string): string {
       POSTGRES_USER: arxgen
       POSTGRES_PASSWORD: arxgen
     ports:
-      - "5432:5432"`;
+      - "\${POSTGRES_PORT:-5432}:5432"`;
 }
 
 function nodeDockerfile(command: string, port: string): string {

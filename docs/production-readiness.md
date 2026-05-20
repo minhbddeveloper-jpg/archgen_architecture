@@ -5,6 +5,7 @@ arxgen generates scaffolds. Some scaffolds are intentionally placeholders.
 ## Stable
 
 - TypeScript Express CRUD generation
+- TypeScript Express Prisma-backed CRUD repositories
 - TypeScript Express additive schema upgrade
 - SQL import for common DDL
 - Cross-stack CRUD file generation
@@ -13,7 +14,7 @@ arxgen generates scaffolds. Some scaffolds are intentionally placeholders.
 
 - JWT auth
 - RBAC/permission middleware
-- ORM artifacts
+- ORM artifacts outside TypeScript Express Prisma
 - Docker/Nginx/Redis setup
 - OpenAPI documents
 - CI templates
@@ -21,7 +22,7 @@ arxgen generates scaffolds. Some scaffolds are intentionally placeholders.
 
 Before production use, review:
 
-- real database persistence
+- real database persistence for stacks other than TypeScript Express Prisma
 - auth storage and refresh-token revocation
 - production secrets
 - authorization rules

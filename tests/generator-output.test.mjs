@@ -109,6 +109,9 @@ test("generates setup and ORM artifacts when requested", () => {
     assert.equal(existsSync(join(projectRoot, "tests/unit/generated.test.ts")), true);
     assert.equal(existsSync(join(projectRoot, "tests/integration/http.test.ts")), true);
 
+    const compose = readNormalized(join(projectRoot, "docker-compose.yml"));
+    assert.match(compose, /\$\{POSTGRES_PORT:-5432\}:5432/);
+
     const repository = readNormalized(join(projectRoot, "src/infrastructure/repositories/studentRepository.ts"));
     assert.match(repository, /PrismaClient/);
     assert.match(repository, /prisma\.student\.findMany/);

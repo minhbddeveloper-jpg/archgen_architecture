@@ -1,283 +1,178 @@
-arxgen-next-work/
-├── v1.5-database-confidence/
-│   ├── express-prisma-postgresql-e2e/
-│   │   ├── generate Express project with Prisma
-│   │   ├── generate PostgreSQL docker-compose
-│   │   ├── run npm install
-│   │   ├── run prisma migrate
-│   │   ├── run npm build
-│   │   ├── start generated server
-│   │   ├── test POST /students
-│   │   ├── test GET /students
-│   │   ├── test PUT /students/:id
-│   │   └── test DELETE /students/:id
-│   │
-│   ├── sql-import-e2e/
-│   │   ├── create sample schema.sql
-│   │   ├── parse tables
-│   │   ├── parse fields
-│   │   ├── parse primary keys
-│   │   ├── parse foreign keys
-│   │   ├── generate entities from SQL
-│   │   ├── generate Prisma schema from SQL
-│   │   ├── generate CRUD from SQL entities
-│   │   └── run generated API test
-│   │
-│   ├── generated-readme/
-│   │   ├── generate README.md per project
-│   │   ├── add install command
-│   │   ├── add dev command
-│   │   ├── add build command
-│   │   ├── add database setup command
-│   │   ├── add migration command
-│   │   ├── add API examples
-│   │   └── add environment variables section
-│   │
-│   └── doctor-command/
-│       ├── check Node.js version
-│       ├── check npm version
-│       ├── check output folder permission
-│       ├── check package manager
-│       ├── check Docker availability
-│       ├── check database config
-│       └── print actionable fix suggestions
-│
-├── v1.6-nestjs-serious-mode/
-│   ├── nestjs-build-test/
-│   │   ├── generate NestJS project
-│   │   ├── run npm install
-│   │   ├── run npm build
-│   │   └── verify generated project compiles
-│   │
-│   ├── nestjs-crud/
-│   │   ├── generate module per entity
-│   │   ├── generate controller
-│   │   ├── generate service
-│   │   ├── generate repository interface
-│   │   ├── generate repository implementation
-│   │   ├── generate DTO files
-│   │   ├── generate class-validator rules
-│   │   └── generate Swagger decorators
-│   │
-│   ├── nestjs-prisma/
-│   │   ├── generate Prisma schema
-│   │   ├── generate PrismaService
-│   │   ├── generate repository using Prisma
-│   │   ├── generate migration docs
-│   │   └── add Prisma setup to package.json
-│   │
-│   ├── nestjs-add-entity/
-│   │   ├── detect existing NestJS project
-│   │   ├── add new module
-│   │   ├── add controller/service/repository
-│   │   ├── update app module
-│   │   ├── update Prisma schema if enabled
-│   │   └── preserve existing code
-│   │
-│   └── nestjs-e2e/
-│       ├── start generated NestJS app
-│       ├── test health endpoint
-│       ├── test CRUD endpoints
-│       └── validate response format
-│
-├── v1.7-schema-upgrade/
-│   ├── schema-upgrade-plan/
-│   │   ├── create upgrade plan object
-│   │   ├── detect added tables
-│   │   ├── detect added columns
-│   │   ├── detect removed columns
-│   │   ├── detect changed column types
-│   │   ├── detect nullable changes
-│   │   ├── detect default value changes
-│   │   └── print dry-run summary
-│   │
-│   ├── relation-detection/
-│   │   ├── detect many-to-one
-│   │   ├── detect one-to-many
-│   │   ├── detect many-to-many join tables
-│   │   ├── detect foreign key constraints
-│   │   └── generate relation metadata
-│   │
-│   ├── safety-warnings/
-│   │   ├── warn on dropped table
-│   │   ├── warn on dropped column
-│   │   ├── warn on type change
-│   │   ├── warn on possible rename
-│   │   ├── warn on destructive migration
-│   │   └── require --force for risky changes
-│   │
-│   └── sql-parser-improvements/
-│       ├── support indexes
-│       ├── support unique constraints
-│       ├── support enum fields
-│       ├── support decimal precision
-│       ├── support varchar length
-│       ├── support composite primary keys
-│       └── support created_at / updated_at convention
-│
-├── v1.8-core-refactor/
-│   ├── split-generator-engine/
-│   │   ├── move ORM generation to features/orm
-│   │   ├── move auth generation to features/auth
-│   │   ├── move validation generation to features/validation
-│   │   ├── move Docker generation to features/infrastructure
-│   │   ├── move OpenAPI generation to features/openapi
-│   │   ├── move relation generation to features/relations
-│   │   └── keep GeneratorEngine as orchestrator only
-│   │
-│   ├── split-project-extender/
-│   │   ├── create project detector
-│   │   ├── create route patcher
-│   │   ├── create Prisma schema patcher
-│   │   ├── create NestJS module patcher
-│   │   ├── create package.json patcher
-│   │   └── create schema upgrade patcher
-│   │
-│   ├── feature-pipeline/
-│   │   ├── define FeatureGenerator interface
-│   │   ├── support feature ordering
-│   │   ├── support only/skip
-│   │   ├── support feature dependencies
-│   │   └── support feature capability validation
-│   │
-│   └── template-system/
-│       ├── move hard-coded templates out of generator
-│       ├── add template renderer
-│       ├── add template variables
-│       ├── add snapshot tests for templates
-│       └── add template versioning
-│
-├── v1.9-production-auth/
-│   ├── jwt-production-mode/
-│   │   ├── add --auth-mode production
-│   │   ├── require JWT_SECRET in production
-│   │   ├── generate auth config
-│   │   ├── generate auth middleware
-│   │   └── generate auth error handling
-│   │
-│   ├── user-management/
-│   │   ├── generate users table
-│   │   ├── generate user entity
-│   │   ├── generate user repository
-│   │   ├── generate register use case
-│   │   ├── generate login use case
-│   │   └── generate current user endpoint
-│   │
-│   ├── password-security/
-│   │   ├── use bcrypt or argon2
-│   │   ├── hash password on register
-│   │   ├── verify password on login
-│   │   └── never store plain password
-│   │
-│   ├── refresh-token/
-│   │   ├── generate refresh_tokens table
-│   │   ├── store refresh token hash
-│   │   ├── implement token rotation
-│   │   ├── implement revoke token
-│   │   └── implement logout properly
-│   │
-│   └── rbac/
-│       ├── generate roles table
-│       ├── generate permissions table
-│       ├── generate user_roles table
-│       ├── generate role_permissions table
-│       ├── generate RolesGuard
-│       └── generate PermissionsGuard
-│
-├── v2.0-plugin-sdk/
-│   ├── stable-plugin-api/
-│   │   ├── define plugin metadata
-│   │   ├── define plugin capabilities
-│   │   ├── define generateProject contract
-│   │   ├── define generateEntity contract
-│   │   ├── define generateCrud contract
-│   │   ├── define generateAuth contract
-│   │   └── define generateOrm contract
-│   │
-│   ├── external-plugin-support/
-│   │   ├── load local plugins
-│   │   ├── load npm plugins
-│   │   ├── validate plugin compatibility
-│   │   ├── show plugin errors clearly
-│   │   └── document plugin lifecycle
-│   │
-│   ├── plugin-docs/
-│   │   ├── create plugin-development.md
-│   │   ├── create example plugin
-│   │   ├── document template variables
-│   │   ├── document capability matrix
-│   │   └── document testing requirements
-│   │
-│   └── plugin-tests/
-│       ├── add plugin contract tests
-│       ├── add fixture-based tests
-│       ├── add generated output snapshot tests
-│       └── add compatibility tests
-│
-├── documentation/
-│   ├── docs-site/
-│   │   ├── getting-started
-│   │   ├── cli-reference
-│   │   ├── config-reference
-│   │   ├── supported-stacks
-│   │   ├── sql-import
-│   │   ├── schema-upgrade
-│   │   ├── plugin-development
-│   │   └── production-readiness
-│   │
-│   ├── readme-cleanup/
-│   │   ├── keep README short
-│   │   ├── add quick start
-│   │   ├── add stack support matrix
-│   │   ├── add production confidence note
-│   │   └── link to docs
-│   │
-│   └── release-notes/
-│       ├── add docs/releases/v1.5.0.md
-│       ├── add docs/releases/v1.6.0.md
-│       ├── add migration notes
-│       └── add breaking changes section
-│
-└── ci-quality/
-    ├── github-actions/
-    │   ├── run typecheck
-    │   ├── run unit tests
-    │   ├── run snapshot tests
-    │   ├── run generated app e2e
-    │   └── run package publish dry-run
-    │
-    ├── test-matrix/
-    │   ├── node 20
-    │   ├── node 22
-    │   ├── express basic
-    │   ├── express prisma
-    │   ├── nestjs basic
-    │   └── sql import
-    │
-    └── release-safety/
-        ├── block publish if typecheck fails
-        ├── block publish if unit test fails
-        ├── block publish if snapshot test fails
-        ├── optionally block publish if e2e fails
-        └── require release note for version bump
+# arxgen Roadmap
 
+This roadmap tracks planned work by release line. It uses plain ASCII so the file stays readable across terminals and editors.
 
+## v1.5.0 - Database Confidence
 
-about another stack
-v1.5.0
-└── Make Express database-backed and trustworthy
+Goal: make TypeScript Express database-backed generation more trustworthy.
 
-v1.6.0
-└── Promote NestJS to serious beta/stable candidate
+Status: completed in the codebase. PostgreSQL e2e is available through `npm run test:e2e:postgres` and requires Docker.
 
-v1.7.0
-└── Build TypeScript fullstack path with React
+- Express Prisma PostgreSQL e2e
+  - Generate Express project with Prisma
+  - Generate PostgreSQL docker-compose
+  - Run npm install
+  - Run Prisma generate/migrate flow
+  - Run npm build
+  - Start generated server
+  - Test POST `/students`
+  - Test GET `/students`
+  - Test PUT `/students/:id`
+  - Test DELETE `/students/:id`
+- SQL import e2e
+  - Create sample `schema.sql`
+  - Parse tables, fields, primary keys, and foreign keys
+  - Generate entities from SQL
+  - Generate Prisma schema from SQL
+  - Generate CRUD from SQL entities
+  - Run generated API test
+- Generated README
+  - Generate `README.md` per project
+  - Add install, dev, build, database setup, migration, API examples, and environment variables sections
+- Doctor command
+  - Check Node.js version
+  - Check npm version
+  - Check output folder permission
+  - Check package manager
+  - Check Docker availability
+  - Check database config
+  - Print actionable fix suggestions
 
-v1.8.0
-└── Add first non-TypeScript stack: FastAPI
+## v1.6.0 - NestJS Serious Mode
 
-v1.9.0
-└── Add first enterprise stack: Spring Boot or ASP.NET Core
+Goal: promote NestJS from scaffold to serious beta/stable candidate.
 
-v2.0.0
-└── Stable plugin API + serious multi-stack positioning
+- NestJS build test
+  - Generate NestJS project
+  - Run npm install
+  - Run npm build
+  - Verify generated project compiles
+- NestJS CRUD
+  - Generate module per entity
+  - Generate controller
+  - Generate service
+  - Generate repository interface
+  - Generate repository implementation
+  - Generate DTO files
+  - Generate class-validator rules
+  - Generate Swagger decorators
+- NestJS Prisma
+  - Generate Prisma schema
+  - Generate PrismaService
+  - Generate repository using Prisma
+  - Generate migration docs
+  - Add Prisma setup to package.json
+- NestJS add entity
+  - Detect existing NestJS project
+  - Add new module/controller/service/repository
+  - Update app module
+  - Update Prisma schema if enabled
+  - Preserve existing code
+- NestJS e2e
+  - Start generated NestJS app
+  - Test health endpoint
+  - Test CRUD endpoints
+  - Validate response format
+
+## v1.7.0 - Schema Upgrade
+
+Goal: move schema upgrade beyond additive-only changes.
+
+- Schema upgrade plan
+  - Detect added tables and columns
+  - Detect removed columns
+  - Detect changed column types
+  - Detect nullable changes
+  - Detect default value changes
+  - Print dry-run summary
+- Relation detection
+  - Detect many-to-one and one-to-many
+  - Detect many-to-many join tables
+  - Detect foreign key constraints
+  - Generate relation metadata
+- Safety warnings
+  - Warn on dropped table/column
+  - Warn on type changes
+  - Warn on possible rename
+  - Warn on destructive migrations
+  - Require `--force` for risky changes
+- SQL parser improvements
+  - Support indexes and unique constraints
+  - Support enum fields
+  - Support decimal precision
+  - Support varchar length
+  - Support composite primary keys
+  - Support `created_at` / `updated_at` conventions
+
+## v1.8.0 - Core Refactor
+
+Goal: split the generator into smaller feature modules.
+
+- Split generator engine
+  - Move ORM, auth, validation, Docker, OpenAPI, and relation generation into feature modules
+  - Keep `GeneratorEngine` as orchestrator only
+- Split project extender
+  - Create project detector, route patcher, Prisma schema patcher, module patchers, package.json patcher, and schema upgrade patcher
+- Feature pipeline
+  - Define `FeatureGenerator` interface
+  - Support feature ordering, only/skip, dependencies, and capability validation
+- Template system
+  - Move hard-coded templates out of generator
+  - Add template renderer, variables, snapshot tests, and versioning
+
+## v1.9.0 - Production Auth
+
+Goal: replace auth scaffold with production-oriented generated auth.
+
+- JWT production mode
+  - Add `--auth-mode production`
+  - Require `JWT_SECRET` in production
+  - Generate auth config, middleware, and error handling
+- User management
+  - Generate users table/entity/repository
+  - Generate register, login, and current user endpoints
+- Password security
+  - Use bcrypt or argon2
+  - Hash password on register
+  - Verify password on login
+  - Never store plain password
+- Refresh token
+  - Generate refresh token storage
+  - Store refresh token hash
+  - Implement token rotation, revoke token, and logout
+- RBAC
+  - Generate roles, permissions, user_roles, and role_permissions tables
+  - Generate roles and permissions guards
+
+## v2.0.0 - Plugin SDK
+
+Goal: stabilize external plugin APIs and multi-stack positioning.
+
+- Stable plugin API
+  - Define plugin metadata, capabilities, and generation contracts
+- External plugin support
+  - Load local and npm plugins
+  - Validate plugin compatibility
+  - Show plugin errors clearly
+  - Document plugin lifecycle
+- Plugin docs
+  - Create plugin development guide
+  - Create example plugin
+  - Document template variables, capability matrix, and testing requirements
+- Plugin tests
+  - Add contract tests
+  - Add fixture-based tests
+  - Add generated output snapshot tests
+  - Add compatibility tests
+
+## Documentation And CI Quality
+
+- Documentation
+  - Keep README short
+  - Add quick start, stack support matrix, production confidence note, and docs links
+  - Add release notes for every version bump
+- CI quality
+  - Run typecheck, unit tests, snapshot tests, generated app e2e, and package publish dry-run
+  - Test Node.js 20 and 22
+  - Test Express basic, Express Prisma, NestJS basic, and SQL import
+  - Block publish when typecheck, unit tests, or snapshot tests fail

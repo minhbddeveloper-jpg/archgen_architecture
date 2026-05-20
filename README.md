@@ -68,7 +68,7 @@ Remove `--dry-run` to apply the additive upgrade.
 | TypeScript Express `add entity` | Stable |
 | TypeScript Express schema upgrade | Stable for additive changes |
 | TypeScript Express JWT auth | Scaffold, not production auth |
-| TypeScript Express Prisma | Scaffold with schema/migration/seed files |
+| TypeScript Express Prisma | Database-backed CRUD repositories with schema/migration/seed files |
 | NestJS CRUD | Stable scaffold |
 | NestJS schema upgrade | Partial additive support |
 | Other backend CRUD stacks | Stable scaffold |
@@ -90,6 +90,7 @@ arxgen is explicit about generated scaffold versus production-ready implementati
 - Go Gin
 - Ruby Rails
 - Kotlin Ktor
+
 ## Stack Support Matrix
 
 arxgen supports multiple stacks, but not every stack has the same production confidence level yet.
@@ -102,30 +103,30 @@ Status meaning:
 - **Planned**: not fully implemented yet.
 
 | Stack | Create Project | CRUD | ORM / DB | Add Entity | SQL Import | Schema Upgrade | Generated App Test | Status |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| TypeScript Express | ✅ | ✅ | Partial | ✅ | ✅ | ✅ | ✅ | Stable |
-| TypeScript NestJS | ✅ | ✅ | Partial | Partial | Partial | Partial | Planned | Beta |
-| TypeScript React | ✅ | Partial | N/A | N/A | N/A | N/A | Planned | Beta |
-| Python FastAPI | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| Python Django | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| Java Spring Boot | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| C# ASP.NET Core | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| Go Gin | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| PHP Laravel | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| Ruby Rails | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
-| Kotlin Ktor | ✅ | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| TypeScript Express | Yes | Yes | Prisma-backed | Yes | Yes | Yes | Yes | Stable |
+| TypeScript NestJS | Yes | Yes | Partial | Partial | Partial | Partial | Planned | Beta |
+| TypeScript React | Yes | Partial | N/A | N/A | N/A | N/A | Planned | Beta |
+| Python FastAPI | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Python Django | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Java Spring Boot | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| C# ASP.NET Core | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Go Gin | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| PHP Laravel | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Ruby Rails | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
+| Kotlin Ktor | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
 
-### Recommended production path
+### Recommended Production Path
 
 For production-oriented usage, start with:
 
-1. **TypeScript Express** — strongest current support.
-2. **TypeScript NestJS** — recommended for structured backend projects, currently in beta.
-3. **TypeScript React** — useful for frontend/fullstack scaffolding.
+1. **TypeScript Express** - strongest current support.
+2. **TypeScript NestJS** - recommended for structured backend projects, currently in beta.
+3. **TypeScript React** - useful for frontend/fullstack scaffolding.
 
 Other stacks are available as scaffolding targets, but should be treated as experimental until they have generated-app build/e2e validation.
 
-### Promotion rules
+### Promotion Rules
 
 A stack can move from **Experimental** to **Beta** when:
 
@@ -173,6 +174,14 @@ npm run test:e2e
 
 This test generates an Express project, installs dependencies, builds it, starts the server, and calls CRUD endpoints.
 
+Generated Express + Prisma + PostgreSQL execution test:
+
+```bash
+npm run test:e2e:postgres
+```
+
+This test requires Docker. It generates an Express Prisma project, starts PostgreSQL with Docker Compose, runs Prisma migration, builds the app, starts the server, and calls CRUD endpoints.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
@@ -182,4 +191,4 @@ This test generates an Express project, installs dependencies, builds it, starts
 - [Schema Upgrade](docs/schema-upgrade.md)
 - [Plugin Development](docs/plugin-development.md)
 - [Production Readiness](docs/production-readiness.md)
-- [Roadmap](docs/upgrade-roadmap.md)
+- [Roadmap](docs/roadmap.md)
