@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1
+
+- Added security policy, Dependabot, CI build step, issue templates, PR template, contributing guide, code of conduct, and npm metadata.
+- Added README badges and package documentation links.
+- Prepared package metadata for public npm release.
+
 ## 1.6.0
 
 - Added generated NestJS health endpoint.
