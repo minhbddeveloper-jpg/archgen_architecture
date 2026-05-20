@@ -1,5 +1,10 @@
 # arxgen
 
+![npm](https://img.shields.io/npm/v/arxgen)
+![npm downloads](https://img.shields.io/npm/dw/arxgen)
+![license](https://img.shields.io/npm/l/arxgen)
+![CI](https://github.com/minhbddeveloper-jpg/arxgen_architecture/actions/workflows/ci.yml/badge.svg)
+
 arxgen is a CLI generator for Clean Architecture-style project starters and schema-driven CRUD scaffolding.
 
 It is strongest today for TypeScript Express, with growing support for NestJS and other backend stacks.
@@ -202,6 +207,9 @@ This test generates a NestJS project, installs dependencies, builds it, starts t
 - [Plugin Development](docs/plugin-development.md)
 - [Production Readiness](docs/production-readiness.md)
 - [Roadmap](docs/roadmap.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 
 ## License
 
