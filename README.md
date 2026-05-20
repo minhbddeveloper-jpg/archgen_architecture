@@ -7,7 +7,7 @@ It is strongest today for TypeScript Express, with growing support for NestJS an
 ## Install
 
 ```bash
-npm install -g arxgen
+npm install -g @minhbddeveloper/arxgen
 ```
 
 ```bash
