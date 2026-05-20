@@ -51,6 +51,32 @@ export class ProjectExtender {
   async addEntity(projectRoot: string, request: AddEntityRequest, options: WriteFilesOptions = {}): Promise<ExtendProjectResult> {
     const root = resolve(projectRoot);
     const detection = await detectProject(root);
+    if (detection.language === "typescript" && detection.framework === "nestjs") {
+      const className = toPascalCase(request.entity.name);
+      const entityPath = join(root, "src", "modules", pluralize(toKebabCase(request.entity.name)), "domain", `${className}.ts`);
+      if ((await exists(entityPath)) && !options.overwrite) {
+        throw new Error(`${className} already exists. Use --force to overwrite generated files or choose a different entity name.`);
+      }
+      const created = await createStackEntity(root, detection, request.entity, options, this.fileWriter);
+      if (!created) {
+        throw new Error("Unable to add NestJS entity to this generated project.");
+      }
+      const updatedFiles = [...created.updatedFiles];
+      if (request.merge || options.overwrite) {
+        const updatedPrismaSchema = await updatePrismaSchema(root, request.entity, Boolean(options.dryRun));
+        if (updatedPrismaSchema) {
+          updatedFiles.push("prisma/schema.prisma");
+        }
+      }
+      return {
+        projectRoot: root,
+        framework: detection.framework,
+        language: detection.language,
+        filesWritten: created.filesWritten,
+        dryRun: options.dryRun ?? false,
+        updatedFiles
+      };
+    }
     ensureTypeScriptExpress(detection);
     const existingEntities = await detectExistingEntities(root);
     const className = toPascalCase(request.entity.name);
@@ -435,13 +461,12 @@ async function registerNestJsModule(root: string, entity: EntityConfig, dryRun: 
   if (!(await exists(appModulePath))) return [];
   const className = toPascalCase(entity.name);
   const routeName = pluralize(toKebabCase(entity.name));
-  const importLine = `import { ${className}sModule } from "./modules/${routeName}/${routeName}.module";`;
+  const moduleName = `${className}Module`;
+  const importLine = `import { ${moduleName} } from "./modules/${routeName}/${routeName}.module";`;
   const current = await readFile(appModulePath, "utf8");
   let next = current.includes(importLine) ? current : `${importLine}\n${current}`;
-  if (!next.includes(`${className}sModule`)) {
-    next = next.replace(/imports:\s*\[/, `imports: [${className}sModule, `);
-  } else if (!/\bimports:[\s\S]*\b[A-Za-z0-9]+sModule/.test(current)) {
-    next = next.replace(/imports:\s*\[/, `imports: [${className}sModule, `);
+  if (!new RegExp(`\\b${moduleName}\\b[\\s\\S]*\\]`).test(current.match(/imports:\s*\[[\s\S]*?\]/)?.[0] ?? "")) {
+    next = next.replace(/(\n\s+AuthModule)(,?)/, `$1,\n    ${moduleName}$2`);
   }
   if (next !== current && !dryRun) await writeFile(appModulePath, next, "utf8");
   return next !== current ? ["src/app.module.ts"] : [];

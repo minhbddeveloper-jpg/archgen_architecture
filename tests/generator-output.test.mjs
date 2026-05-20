@@ -582,7 +582,7 @@ test("upgrades existing generated backend entities from a changed SQL schema", (
       expected: [/phone\?: string/, /age\?: number/],
       createdFile: "src/modules/courses/domain/Course.ts",
       registrationFile: "src/app.module.ts",
-      registrationExpected: /CoursesModule/
+      registrationExpected: /CourseModule/
     },
     {
       name: "fastapi-api",
@@ -901,6 +901,7 @@ test("generates NestJS clean architecture module output", () => {
     );
 
     const projectRoot = join(outputRoot, "nest-school");
+    assert.equal(existsSync(join(projectRoot, "src/health.controller.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/modules/students/students.module.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/modules/students/presentation/students.controller.ts")), true);
     assert.equal(existsSync(join(projectRoot, "src/modules/students/application/ports/studentRepository.ts")), true);
@@ -912,6 +913,64 @@ test("generates NestJS clean architecture module output", () => {
     const main = readNormalized(join(projectRoot, "src/main.ts"));
     assert.match(main, /SwaggerModule/);
     assert.match(main, /ValidationPipe/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("generates NestJS Prisma repositories and add entity updates app module", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "nest-prisma",
+        "--language",
+        "typescript",
+        "--framework",
+        "nestjs",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "nest-prisma");
+    assert.equal(existsSync(join(projectRoot, "src/modules/students/infrastructure/student.prismaRepository.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/database/prisma.service.ts")), true);
+    assert.match(readNormalized(join(projectRoot, "package.json")), /"@prisma\/client"/);
+
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "add",
+        "entity",
+        "course",
+        "--field",
+        "title:string",
+        "--project",
+        projectRoot,
+        "--merge"
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    assert.equal(existsSync(join(projectRoot, "src/modules/courses/courses.module.ts")), true);
+    assert.match(readNormalized(join(projectRoot, "src/app.module.ts")), /CourseModule/);
+    assert.match(readNormalized(join(projectRoot, "prisma/schema.prisma")), /model Course/);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }

@@ -3,7 +3,7 @@
 | Stack | CRUD | Schema Upgrade | Notes |
 | --- | --- | --- | --- |
 | TypeScript Express | Stable | Stable additive | Strongest stack |
-| TypeScript NestJS | Stable scaffold | Partial additive | Enterprise stack focus |
+| TypeScript NestJS | Beta | Stable additive | Build/e2e verified, Prisma repository support |
 | Python FastAPI | Stable scaffold | Partial additive | Pydantic model patching |
 | Python Django | Stable scaffold | Partial additive | Dataclass/service scaffold |
 | Java Spring Boot | Stable scaffold | Partial additive | Entity patching |

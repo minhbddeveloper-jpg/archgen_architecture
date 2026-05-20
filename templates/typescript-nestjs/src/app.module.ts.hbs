@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { environment } from "./common/config/environment";
 import { AuthModule } from "./auth/auth.module";
+import { HealthController } from "./health.controller";
 {{#each entities}}
 import { {{className}}Module } from "./modules/{{routeName}}/{{routeName}}.module";
 {{/each}}
@@ -11,6 +12,7 @@ import { {{className}}Module } from "./modules/{{routeName}}/{{routeName}}.modul
     ConfigModule.forRoot({ isGlobal: true, load: [environment] }),
     AuthModule{{#each entities}},
     {{className}}Module{{/each}}
-  ]
+  ],
+  controllers: [HealthController]
 })
 export class AppModule {}

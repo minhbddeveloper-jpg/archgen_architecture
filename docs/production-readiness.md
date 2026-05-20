@@ -6,6 +6,8 @@ arxgen generates scaffolds. Some scaffolds are intentionally placeholders.
 
 - TypeScript Express CRUD generation
 - TypeScript Express Prisma-backed CRUD repositories
+- TypeScript NestJS build/e2e verified CRUD scaffold
+- TypeScript NestJS Prisma repository scaffold
 - TypeScript Express additive schema upgrade
 - SQL import for common DDL
 - Cross-stack CRUD file generation

@@ -29,7 +29,7 @@ arxgen add entity course --field title:string --project ./generated/api --merge
 arxgen add schema --from-sql ./schema.sql --project ./generated/api
 ```
 
-`add` commands are stable for generated TypeScript Express projects.
+`add entity` is stable for generated TypeScript Express projects and beta for generated TypeScript NestJS projects.
 
 ## Upgrade
 

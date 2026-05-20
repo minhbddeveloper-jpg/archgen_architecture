@@ -42,6 +42,8 @@ Status: completed in the codebase. PostgreSQL e2e is available through `npm run 
 
 Goal: promote NestJS from scaffold to serious beta/stable candidate.
 
+Status: completed in the codebase. Generated NestJS e2e is available through `npm run test:e2e:nestjs`.
+
 - NestJS build test
   - Generate NestJS project
   - Run npm install

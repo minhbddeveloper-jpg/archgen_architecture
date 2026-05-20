@@ -8,11 +8,11 @@ import { StudentRepository, STUDENT_REPOSITORY } from "./ports/studentRepository
 export class StudentService {
   constructor(@Inject(STUDENT_REPOSITORY) private readonly repository: StudentRepository) {}
 
-  findAll(query: StudentQueryDto = {}): PaginatedStudentResponseDto {
+  async findAll(query: StudentQueryDto = {}): Promise<PaginatedStudentResponseDto> {
     const page = Math.max(Number(query.page ?? 1), 1);
     const limit = Math.max(Number(query.limit ?? 10), 1);
     const q = query.q?.toLowerCase();
-    const records = this.repository.findAll().filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const records = (await this.repository.findAll()).filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
     const start = (page - 1) * limit;
 
     return {
@@ -21,20 +21,20 @@ export class StudentService {
     };
   }
 
-  findById(id: string): Student | undefined {
+  async findById(id: string): Promise<Student | undefined> {
     return this.repository.findById(id);
   }
 
-  create(input: CreateStudentDto): Student {
+  async create(input: CreateStudentDto): Promise<Student> {
     return this.repository.save({ id: randomUUID(), ...input });
   }
 
-  update(id: string, input: UpdateStudentDto): Student | undefined {
-    const current = this.repository.findById(id);
+  async update(id: string, input: UpdateStudentDto): Promise<Student | undefined> {
+    const current = await this.repository.findById(id);
     return current ? this.repository.save({ ...current, ...input, id }) : undefined;
   }
 
-  delete(id: string): boolean {
+  async delete(id: string): Promise<boolean> {
     return this.repository.delete(id);
   }
 }

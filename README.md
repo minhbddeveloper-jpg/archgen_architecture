@@ -7,7 +7,7 @@ It is strongest today for TypeScript Express, with growing support for NestJS an
 ## Install
 
 ```bash
-npm install -g @minhbddeveloper/arxgen
+npm install -g arxgen
 ```
 
 ```bash
@@ -69,8 +69,10 @@ Remove `--dry-run` to apply the additive upgrade.
 | TypeScript Express schema upgrade | Stable for additive changes |
 | TypeScript Express JWT auth | Scaffold, not production auth |
 | TypeScript Express Prisma | Database-backed CRUD repositories with schema/migration/seed files |
-| NestJS CRUD | Stable scaffold |
-| NestJS schema upgrade | Partial additive support |
+| NestJS CRUD | Build/e2e verified beta |
+| NestJS Prisma | Prisma-backed repository scaffold |
+| NestJS `add entity` | Beta |
+| NestJS schema upgrade | Stable additive support |
 | Other backend CRUD stacks | Stable scaffold |
 | Other backend schema upgrade | Partial additive model/entity support |
 | Docker, Nginx, Redis, CI, logging, OpenAPI | Scaffold |
@@ -105,7 +107,7 @@ Status meaning:
 | Stack | Create Project | CRUD | ORM / DB | Add Entity | SQL Import | Schema Upgrade | Generated App Test | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TypeScript Express | Yes | Yes | Prisma-backed | Yes | Yes | Yes | Yes | Stable |
-| TypeScript NestJS | Yes | Yes | Partial | Partial | Partial | Partial | Planned | Beta |
+| TypeScript NestJS | Yes | Yes | Prisma-backed | Yes | Partial | Yes | Yes | Beta |
 | TypeScript React | Yes | Partial | N/A | N/A | N/A | N/A | Planned | Beta |
 | Python FastAPI | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
 | Python Django | Yes | Partial | Partial | Planned | Partial | Planned | Planned | Experimental |
@@ -182,6 +184,14 @@ npm run test:e2e:postgres
 
 This test requires Docker. It generates an Express Prisma project, starts PostgreSQL with Docker Compose, runs Prisma migration, builds the app, starts the server, and calls CRUD endpoints.
 
+Generated NestJS app execution test:
+
+```bash
+npm run test:e2e:nestjs
+```
+
+This test generates a NestJS project, installs dependencies, builds it, starts the server, and calls health and CRUD endpoints.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
@@ -192,3 +202,13 @@ This test requires Docker. It generates an Express Prisma project, starts Postgr
 - [Plugin Development](docs/plugin-development.md)
 - [Production Readiness](docs/production-readiness.md)
 - [Roadmap](docs/roadmap.md)
+
+## License
+
+This project is licensed under the MIT License.
+
+Copyright (c) 2026 Minh Bùi Đức.
+
+Official repository: https://github.com/minhbddeveloper-jpg/arxgen_architecture
+
+Official npm package: https://www.npmjs.com/package/arxgen

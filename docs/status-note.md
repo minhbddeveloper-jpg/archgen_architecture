@@ -1,6 +1,6 @@
 # arxgen Roadmap Status
 
-Current package version: `1.5.0`.
+Current package version: `1.6.0`.
 
 This file tracks the current product status. Release-specific notes live in `docs/releases/`.
 
@@ -18,10 +18,15 @@ This file tracks the current product status. Release-specific notes live in `doc
 - `arxgen doctor` environment checks.
 - Generated Express app e2e test.
 - Generated Express + Prisma + PostgreSQL e2e test, available with `npm run test:e2e:postgres` when Docker is installed.
+- TypeScript NestJS project generation with build-verified CRUD modules.
+- TypeScript NestJS health endpoint.
+- TypeScript NestJS Prisma repository generation.
+- TypeScript NestJS `add entity` support.
+- Generated NestJS app e2e test.
 
 ## Partial
 
-- Schema upgrade for NestJS, FastAPI, Django, Spring Boot, ASP.NET Core, Laravel, Gin, Rails, and Ktor.
+- Schema upgrade for FastAPI, Django, Spring Boot, ASP.NET Core, Laravel, Gin, Rails, and Ktor.
 - ORM integration artifacts outside TypeScript Express Prisma.
 - Docker, Nginx, Redis, CI, OpenAPI, migration, seed, logging, and exception scaffolds.
 

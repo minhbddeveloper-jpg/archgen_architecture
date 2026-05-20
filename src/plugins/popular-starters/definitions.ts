@@ -69,6 +69,7 @@ export const starterDefinitions: StarterDefinition[] = [
       { template: "tsconfig.json.hbs", output: "{{projectSlug}}/tsconfig.json" },
       { template: "src/main.ts.hbs", output: "{{projectSlug}}/src/main.ts" },
       { template: "src/app.module.ts.hbs", output: "{{projectSlug}}/src/app.module.ts" },
+      { template: "src/health.controller.ts.hbs", output: "{{projectSlug}}/src/health.controller.ts" },
       { template: "README.md.hbs", output: "{{projectSlug}}/README.md" }
     ],
     keepDirs: [

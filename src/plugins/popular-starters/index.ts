@@ -304,6 +304,18 @@ function prismaDomainValue(field: FieldView): string {
   return `String(${value})`;
 }
 
+function prismaNestDomainValue(field: FieldView): string {
+  const value = `value.${field.camelName}`;
+  if (!field.required) {
+    if (field.tsType === "number") return `typeof ${value} === "number" ? ${value} : undefined`;
+    if (field.tsType === "boolean") return `typeof ${value} === "boolean" ? ${value} : undefined`;
+    return `typeof ${value} === "string" ? ${value} : undefined`;
+  }
+  if (field.tsType === "number") return `Number(${value})`;
+  if (field.tsType === "boolean") return `Boolean(${value})`;
+  return `String(${value})`;
+}
+
 function toPythonType(type: FieldType): string {
   if (type === "number") return "float";
   if (type === "boolean") return "bool";
@@ -762,11 +774,21 @@ export type Update${entity.className}Input = Partial<Create${entity.className}In
 
 function typescriptNestJsCrudFiles(context: Record<string, unknown>, entity: EntityView): GeneratedFile[] {
   const root = contextString(context, "projectSlug");
+  const usesPrisma = contextString(context, "orm").toLowerCase() === "prisma";
   const fields = entity.fields.map((field) => `  ${field.camelName}: ${field.tsType};`).join("\n");
   const dtoFields = entity.fields.map((field) => `  @ApiProperty({ required: ${field.required ? "true" : "false"} })
   ${field.required ? "" : "@IsOptional()\n  "}${nestjsValidator(field.type)}
   ${field.camelName}!: ${field.tsType};`).join("\n\n");
   const moduleRoot = `${root}/src/modules/${entity.routeName}`;
+  const repositoryImplementation = usesPrisma ? `${entity.className}PrismaRepository` : `${entity.className}MemoryRepository`;
+  const repositoryImport = usesPrisma
+    ? `import { ${entity.className}PrismaRepository } from "./infrastructure/${entity.camelName}.prismaRepository";`
+    : `import { ${entity.className}MemoryRepository } from "./infrastructure/${entity.camelName}.memoryRepository";`;
+  const prismaProviderImport = usesPrisma ? `import { PrismaService } from "../../database/prisma.service";\n` : "";
+  const prismaProvider = usesPrisma ? `    PrismaService,\n` : "";
+  const prismaCreateData = entity.fields.map((field) => `        ${field.camelName}: record.${field.camelName}`).join(",\n");
+  const prismaUpdateData = entity.fields.map((field) => `        ${field.camelName}: record.${field.camelName}`).join(",\n");
+  const prismaSelect = entity.fields.map((field) => `    ${field.camelName}: ${prismaNestDomainValue(field)}`).join(",\n");
 
   return [
     {
@@ -783,11 +805,13 @@ ${fields}
 
 export const ${entity.className.toUpperCase()}_REPOSITORY = Symbol("${entity.className}Repository");
 
+export type MaybePromise<T> = T | Promise<T>;
+
 export interface ${entity.className}Repository {
-  findAll(): ${entity.className}[];
-  findById(id: string): ${entity.className} | undefined;
-  save(record: ${entity.className}): ${entity.className};
-  delete(id: string): boolean;
+  findAll(): MaybePromise<${entity.className}[]>;
+  findById(id: string): MaybePromise<${entity.className} | undefined>;
+  save(record: ${entity.className}): MaybePromise<${entity.className}>;
+  delete(id: string): MaybePromise<boolean>;
 }
 `
     },
@@ -844,11 +868,11 @@ import { ${entity.className}Repository, ${entity.className.toUpperCase()}_REPOSI
 export class ${entity.className}Service {
   constructor(@Inject(${entity.className.toUpperCase()}_REPOSITORY) private readonly repository: ${entity.className}Repository) {}
 
-  findAll(query: ${entity.className}QueryDto = {}): Paginated${entity.className}ResponseDto {
+  async findAll(query: ${entity.className}QueryDto = {}): Promise<Paginated${entity.className}ResponseDto> {
     const page = Math.max(Number(query.page ?? 1), 1);
     const limit = Math.max(Number(query.limit ?? 10), 1);
     const q = query.q?.toLowerCase();
-    const records = this.repository.findAll().filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
+    const records = (await this.repository.findAll()).filter((record) => !q || JSON.stringify(record).toLowerCase().includes(q));
     const start = (page - 1) * limit;
 
     return {
@@ -857,20 +881,20 @@ export class ${entity.className}Service {
     };
   }
 
-  findById(id: string): ${entity.className} | undefined {
+  async findById(id: string): Promise<${entity.className} | undefined> {
     return this.repository.findById(id);
   }
 
-  create(input: Create${entity.className}Dto): ${entity.className} {
+  async create(input: Create${entity.className}Dto): Promise<${entity.className}> {
     return this.repository.save({ id: randomUUID(), ...input });
   }
 
-  update(id: string, input: Update${entity.className}Dto): ${entity.className} | undefined {
-    const current = this.repository.findById(id);
+  async update(id: string, input: Update${entity.className}Dto): Promise<${entity.className} | undefined> {
+    const current = await this.repository.findById(id);
     return current ? this.repository.save({ ...current, ...input, id }) : undefined;
   }
 
-  delete(id: string): boolean {
+  async delete(id: string): Promise<boolean> {
     return this.repository.delete(id);
   }
 }
@@ -878,9 +902,11 @@ export class ${entity.className}Service {
     },
     {
       path: `${moduleRoot}/infrastructure/${entity.camelName}.memoryRepository.ts`,
-      content: `import { ${entity.className}Repository } from "../application/ports/${entity.camelName}Repository";
+      content: `import { Injectable } from "@nestjs/common";
+import { ${entity.className}Repository } from "../application/ports/${entity.camelName}Repository";
 import { ${entity.className} } from "../domain/${entity.className}";
 
+@Injectable()
 export class ${entity.className}MemoryRepository implements ${entity.className}Repository {
   private readonly records = new Map<string, ${entity.className}>();
 
@@ -903,6 +929,56 @@ export class ${entity.className}MemoryRepository implements ${entity.className}R
 }
 `
     },
+    ...(usesPrisma ? [{
+      path: `${moduleRoot}/infrastructure/${entity.camelName}.prismaRepository.ts`,
+      content: `import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../../../database/prisma.service";
+import { ${entity.className}Repository } from "../application/ports/${entity.camelName}Repository";
+import { ${entity.className} } from "../domain/${entity.className}";
+
+@Injectable()
+export class ${entity.className}PrismaRepository implements ${entity.className}Repository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(): Promise<${entity.className}[]> {
+    const records = await this.prisma.${entity.camelName}.findMany({ orderBy: { id: "asc" } });
+    return records.map(toDomain);
+  }
+
+  async findById(id: string): Promise<${entity.className} | undefined> {
+    const record = await this.prisma.${entity.camelName}.findUnique({ where: { id } });
+    return record ? toDomain(record) : undefined;
+  }
+
+  async save(record: ${entity.className}): Promise<${entity.className}> {
+    const saved = await this.prisma.${entity.camelName}.upsert({
+      where: { id: record.id },
+      create: {
+        id: record.id${prismaCreateData ? ",\n" + prismaCreateData : ""}
+      },
+      update: {${prismaUpdateData ? "\n" + prismaUpdateData + "\n      " : ""}}
+    });
+    return toDomain(saved);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      await this.prisma.${entity.camelName}.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function toDomain(record: unknown): ${entity.className} {
+  const value = record as Record<string, unknown>;
+  return {
+    id: String(value.id)${prismaSelect ? ",\n" + prismaSelect : ""}
+  };
+}
+`
+    }] : []),
     {
       path: `${moduleRoot}/presentation/${entity.routeName}.controller.ts`,
       content: `import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put, Query } from "@nestjs/common";
@@ -917,32 +993,32 @@ export class ${entity.className}Controller {
 
   @Get()
   @ApiResponse({ status: 200 })
-  findAll(@Query() query: ${entity.className}QueryDto) {
+  async findAll(@Query() query: ${entity.className}QueryDto) {
     return this.service.findAll(query);
   }
 
   @Get(":id")
-  findById(@Param("id") id: string) {
-    const record = this.service.findById(id);
+  async findById(@Param("id") id: string) {
+    const record = await this.service.findById(id);
     if (!record) throw new NotFoundException();
     return record;
   }
 
   @Post()
-  create(@Body() input: Create${entity.className}Dto) {
+  async create(@Body() input: Create${entity.className}Dto) {
     return this.service.create(input);
   }
 
   @Put(":id")
-  update(@Param("id") id: string, @Body() input: Update${entity.className}Dto) {
-    const record = this.service.update(id, input);
+  async update(@Param("id") id: string, @Body() input: Update${entity.className}Dto) {
+    const record = await this.service.update(id, input);
     if (!record) throw new NotFoundException();
     return record;
   }
 
   @Delete(":id")
-  delete(@Param("id") id: string) {
-    if (!this.service.delete(id)) throw new NotFoundException();
+  async delete(@Param("id") id: string) {
+    if (!(await this.service.delete(id))) throw new NotFoundException();
   }
 }
 `
@@ -952,17 +1028,17 @@ export class ${entity.className}Controller {
       content: `import { Module } from "@nestjs/common";
 import { ${entity.className}Service } from "./application/${entity.camelName}.service";
 import { ${entity.className.toUpperCase()}_REPOSITORY } from "./application/ports/${entity.camelName}Repository";
-import { ${entity.className}MemoryRepository } from "./infrastructure/${entity.camelName}.memoryRepository";
+${prismaProviderImport}${repositoryImport}
 import { ${entity.className}Controller } from "./presentation/${entity.routeName}.controller";
 
 @Module({
   controllers: [${entity.className}Controller],
   providers: [
-    ${entity.className}Service,
-    {
+${prismaProvider}    {
       provide: ${entity.className.toUpperCase()}_REPOSITORY,
-      useClass: ${entity.className}MemoryRepository
-    }
+      useClass: ${repositoryImplementation}
+    },
+    ${entity.className}Service,
   ]
 })
 export class ${entity.className}Module {}
