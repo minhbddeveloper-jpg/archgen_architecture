@@ -63,7 +63,24 @@ arxgen upgrade schema \
   --dry-run
 ```
 
-Remove `--dry-run` to apply the additive upgrade.
+The dry-run output reports added fields, removed fields, type changes, nullability changes, default changes, and risky migration warnings.
+
+Apply additive changes after reviewing the preview:
+
+```bash
+arxgen upgrade schema \
+  --from-sql ./schema.sql \
+  --project ./generated/school-api
+```
+
+If the schema contains risky changes, arxgen requires `--force`. It still does not delete, rename, or rewrite existing fields automatically; those database/code migration steps remain manual.
+
+```bash
+arxgen upgrade schema \
+  --from-sql ./schema.sql \
+  --project ./generated/school-api \
+  --force
+```
 
 ## Support Status
 
@@ -71,7 +88,7 @@ Remove `--dry-run` to apply the additive upgrade.
 | --- | --- |
 | TypeScript Express CRUD | Stable |
 | TypeScript Express `add entity` | Stable |
-| TypeScript Express schema upgrade | Stable for additive changes |
+| TypeScript Express schema upgrade | Stable with safety warnings |
 | TypeScript Express JWT auth | Scaffold, not production auth |
 | TypeScript Express Prisma | Database-backed CRUD repositories with schema/migration/seed files |
 | NestJS CRUD | Build/e2e verified beta |
@@ -161,6 +178,7 @@ arxgen create --preset saas --name my-api --entity student --field name:string
 arxgen add entity course --field title:string --project ./generated/student-api --merge
 arxgen add schema --from-sql ./schema.sql --project ./generated/student-api
 arxgen upgrade schema --from-sql ./schema.sql --project ./generated/student-api --dry-run
+arxgen upgrade schema --from-sql ./schema.sql --project ./generated/student-api --force
 arxgen wizard
 arxgen list plugins
 ```
