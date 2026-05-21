@@ -30,6 +30,30 @@ npm run test:e2e:postgres
 - Update docs and release notes when behavior changes.
 - Run `npm run typecheck` and `npm test` before opening a PR.
 
+## Release Checklist
+
+Every new version must keep user-facing commands in sync.
+
+For every release:
+
+- Update `package.json` and `package-lock.json`.
+- Update `CHANGELOG.md`.
+- Add or update `docs/releases/vX.Y.Z.md`.
+- Review `README.md` and update install, quick start, SQL, upgrade, useful commands, support status, and documentation links when behavior changes.
+- Review `docs/cli-reference.md` when CLI flags or command syntax changes.
+- Run `npm run security:audit`, `npm run typecheck`, `npm test`, and `npm pack --dry-run`.
+
+For every `X.Y.0` release:
+
+- Create and push the git tag, for example `v1.8.0`.
+- Create the GitHub Release with GitHub CLI using the release note file:
+
+```bash
+gh release create vX.Y.0 --title "arxgen vX.Y.0" --notes-file docs/releases/vX.Y.0.md
+```
+
+Do not publish or tag a release until README commands have been checked against the current CLI behavior.
+
 ## Reporting Issues
 
 Please include:

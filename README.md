@@ -229,6 +229,8 @@ This test generates a NestJS project, installs dependencies, builds it, starts t
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 
+Release maintainers should follow the release checklist in [CONTRIBUTING.md](CONTRIBUTING.md#release-checklist), including README command review for every version.
+
 ## License
 
 This project is licensed under the MIT License.
