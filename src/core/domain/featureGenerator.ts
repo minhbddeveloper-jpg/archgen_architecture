@@ -9,5 +9,8 @@ export interface FeatureGenerationContext {
 
 export interface FeatureGenerator {
   name: string;
+  dependsOn?: string[];
+  capabilities?: string[];
+  canGenerate?(context: FeatureGenerationContext): boolean;
   generate(context: FeatureGenerationContext): Promise<GeneratedFile[]> | GeneratedFile[];
 }

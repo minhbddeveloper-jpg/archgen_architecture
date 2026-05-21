@@ -112,6 +112,8 @@ Status: completed in the codebase. Schema upgrade now reports risky changes duri
 
 Goal: split the generator into smaller feature modules.
 
+Status: completed first-pass core refactor. CLI routing is split into command/parser/formatter modules, project detection is separated from project extension, and the generation pipeline now validates feature dependencies and capabilities.
+
 - Split generator engine
   - Move ORM, auth, validation, Docker, OpenAPI, and relation generation into feature modules
   - Keep `GeneratorEngine` as orchestrator only

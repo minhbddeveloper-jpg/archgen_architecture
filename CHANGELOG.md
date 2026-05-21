@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.0
+
+- Refactored CLI command routing into command, parser, and formatter modules.
+- Added generation pipeline dependency ordering, duplicate detection, unknown feature validation, circular dependency detection, and capability checks.
+- Extracted generated project detection from `ProjectExtender` into a dedicated project detector module.
+- Added focused generation pipeline tests.
+
 ## 1.7.0
 
 - Added v1.7 schema upgrade warnings for removed fields, type changes, nullability changes, and default changes.
