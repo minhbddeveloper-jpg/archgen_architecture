@@ -69,7 +69,7 @@ function printHelp(logger: Logger): void {
   logger.info(`arxgen
 
 Commands:
-  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--from-sql schema.sql] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--preset saas] [--out <dir>] [--force] [--dry-run]
+  create --name <name> --language <language> --framework <framework> [--entity <name>] [--field <entity.field:type>] [--from-sql schema.sql] [--database postgres] [--orm prisma] [--validation zod] [--auth jwt] [--auth-mode production] [--relation course.student:many-to-one] [--redis] [--docker] [--nginx] [--architecture clean] [--config <file>] [--preset saas] [--out <dir>] [--force] [--dry-run]
   create --name <name> --frontend react --backend express [--database postgres] [--redis] [--docker] [--nginx] [--out <dir>]
   add entity <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add crud <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]

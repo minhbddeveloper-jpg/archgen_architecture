@@ -301,6 +301,72 @@ test("generates auth, validation, pagination, and relation support for TypeScrip
   }
 });
 
+test("generates production JWT auth with refresh token storage and RBAC metadata", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "auth-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--database",
+        "postgres",
+        "--orm",
+        "prisma",
+        "--auth",
+        "jwt",
+        "--auth-mode",
+        "production",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const projectRoot = join(outputRoot, "auth-api");
+    assert.equal(existsSync(join(projectRoot, "src/shared/config/authConfig.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/application/ports/refreshTokenRepositoryPort.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/infrastructure/repositories/refreshTokenRepository.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/infrastructure/repositories/accessControlRepository.ts")), true);
+    assert.equal(existsSync(join(projectRoot, "src/infrastructure/security/tokenHash.ts")), true);
+
+    const authConfig = readNormalized(join(projectRoot, "src/shared/config/authConfig.ts"));
+    assert.match(authConfig, /JWT_SECRET is required when auth-mode is production/);
+
+    const refreshUseCase = readNormalized(join(projectRoot, "src/application/use-cases/refreshTokenUseCase.ts"));
+    assert.match(refreshUseCase, /this\.refreshTokens\.findByHash/);
+    assert.match(refreshUseCase, /this\.refreshTokens\.revoke/);
+
+    const logoutUseCase = readNormalized(join(projectRoot, "src/application/use-cases/logoutUseCase.ts"));
+    assert.match(logoutUseCase, /this\.refreshTokens\.revoke/);
+
+    const routes = readNormalized(join(projectRoot, "src/presentation/routes/authRoutes.ts"));
+    assert.match(routes, /router\.post\("\/refresh"/);
+    assert.match(routes, /router\.post\("\/logout"/);
+
+    const prismaSchema = readNormalized(join(projectRoot, "prisma/schema.prisma"));
+    assert.match(prismaSchema, /model User/);
+    assert.match(prismaSchema, /model RefreshToken/);
+    assert.match(prismaSchema, /model Role/);
+    assert.match(prismaSchema, /model Permission/);
+    assert.match(prismaSchema, /model UserRole/);
+    assert.match(prismaSchema, /model RolePermission/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
 test("add entity updates Prisma schema and infrastructure container when merging", () => {
   const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
 

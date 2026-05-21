@@ -50,6 +50,7 @@ export interface ProjectConfig {
   database?: string;
   orm?: string;
   auth?: string;
+  authMode?: "scaffold" | "production";
   validation?: ValidationProvider;
   relations?: RelationConfig[];
   docker?: boolean;

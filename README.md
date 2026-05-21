@@ -82,6 +82,26 @@ arxgen upgrade schema \
   --force
 ```
 
+## Production Auth
+
+Generate TypeScript Express JWT auth with refresh-token storage, token rotation, logout, RBAC metadata, and Prisma auth models:
+
+```bash
+arxgen create \
+  --name secure-api \
+  --language typescript \
+  --framework express \
+  --entity student \
+  --field name:string \
+  --database postgres \
+  --orm prisma \
+  --auth jwt \
+  --auth-mode production \
+  --out ./generated
+```
+
+Generated production auth requires `JWT_SECRET` at runtime.
+
 ## Support Status
 
 | Area | Status |
@@ -89,7 +109,7 @@ arxgen upgrade schema \
 | TypeScript Express CRUD | Stable |
 | TypeScript Express `add entity` | Stable |
 | TypeScript Express schema upgrade | Stable with safety warnings |
-| TypeScript Express JWT auth | Scaffold, not production auth |
+| TypeScript Express JWT auth | Production mode available with `--auth-mode production` |
 | TypeScript Express Prisma | Database-backed CRUD repositories with schema/migration/seed files |
 | NestJS CRUD | Build/e2e verified beta |
 | NestJS Prisma | Prisma-backed repository scaffold |
@@ -175,6 +195,7 @@ A stack can move from **Beta** to **Stable** when:
 
 ```bash
 arxgen create --preset saas --name my-api --entity student --field name:string
+arxgen create --name secure-api --language typescript --framework express --auth jwt --auth-mode production --database postgres --orm prisma --entity student --field name:string
 arxgen add entity course --field title:string --project ./generated/student-api --merge
 arxgen add schema --from-sql ./schema.sql --project ./generated/student-api
 arxgen upgrade schema --from-sql ./schema.sql --project ./generated/student-api --dry-run

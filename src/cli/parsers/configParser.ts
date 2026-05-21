@@ -40,6 +40,7 @@ export async function toCreateProjectRequest(options: CliOptions): Promise<Creat
       database: optionalString(merged, "database"),
       orm: optionalString(merged, "orm"),
       auth: optionalString(merged, "auth"),
+      authMode: parseAuthMode(merged),
       validation: parseValidation(merged),
       relations,
       docker: optionalBoolean(merged, "docker") ?? booleanOption(options, "docker"),
@@ -175,6 +176,17 @@ function validateStringRecord(value: unknown, key: string): Record<string, strin
   }
 
   return result;
+}
+
+function parseAuthMode(options: Record<string, unknown>): "scaffold" | "production" | undefined {
+  const value = optionalString(options, "authMode") ?? optionalString(options, "auth-mode");
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value !== "scaffold" && value !== "production") {
+    throw new Error("--auth-mode must be one of: scaffold, production");
+  }
+  return value;
 }
 
 export function parseValidation(options: Record<string, unknown>): ValidationProvider | undefined {

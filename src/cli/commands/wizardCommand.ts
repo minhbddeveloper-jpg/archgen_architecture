@@ -33,6 +33,7 @@ async function promptCreateOptions(): Promise<CliOptions> {
     const orm = await rl.question("ORM [none/prisma/sqlalchemy/efcore/jpa/gorm/eloquent]: ");
     const validation = await rl.question("Validation [none/zod/class-validator/joi]: ");
     const auth = await rl.question("Auth [none/jwt]: ");
+    const authMode = await rl.question("Auth mode [scaffold/production]: ");
     const saveConfig = await rl.question("Save arxgen.json? [y/N]: ");
 
     const options: CliOptions = {
@@ -45,6 +46,7 @@ async function promptCreateOptions(): Promise<CliOptions> {
     if (orm && orm !== "none") options.orm = orm;
     if (validation && validation !== "none") options.validation = validation;
     if (auth && auth !== "none") options.auth = auth;
+    if (authMode && authMode !== "scaffold") options["auth-mode"] = authMode;
     if (saveConfig.toLowerCase() === "y" || saveConfig.toLowerCase() === "yes") options["save-config"] = true;
     return options;
   } finally {

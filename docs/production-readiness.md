@@ -9,13 +9,12 @@ arxgen generates scaffolds. Some scaffolds are intentionally placeholders.
 - TypeScript NestJS build/e2e verified CRUD scaffold
 - TypeScript NestJS Prisma repository scaffold
 - TypeScript Express additive schema upgrade
+- TypeScript Express JWT auth production mode
 - SQL import for common DDL
 - Cross-stack CRUD file generation
 
 ## Scaffold
 
-- JWT auth
-- RBAC/permission middleware
 - ORM artifacts outside TypeScript Express Prisma
 - Docker/Nginx/Redis setup
 - OpenAPI documents
@@ -25,7 +24,6 @@ arxgen generates scaffolds. Some scaffolds are intentionally placeholders.
 Before production use, review:
 
 - real database persistence for stacks other than TypeScript Express Prisma
-- auth storage and refresh-token revocation
 - production secrets
 - authorization rules
 - migrations

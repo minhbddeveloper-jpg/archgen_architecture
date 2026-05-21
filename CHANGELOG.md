@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0
+
+- Added `--auth-mode production` for generated TypeScript Express JWT auth.
+- Added production auth config that requires `JWT_SECRET`.
+- Added refresh-token hash storage, rotation, revoke, refresh, and logout support.
+- Added generated RBAC repository contracts and Prisma auth models for users, refresh tokens, roles, permissions, user roles, and role permissions.
+- Added production auth test coverage.
+
 ## 1.8.0
 
 - Refactored CLI command routing into command, parser, and formatter modules.

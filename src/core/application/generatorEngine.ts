@@ -241,7 +241,8 @@ function generateAuthFiles(config: ProjectConfig, root: string): GeneratedFile[]
     return [];
   }
 
-  return [
+  const productionAuth = config.authMode === "production";
+  const files: GeneratedFile[] = [
     {
       path: `${root}/src/domain/entities/User.ts`,
       content: `export interface User {
@@ -255,8 +256,10 @@ function generateAuthFiles(config: ProjectConfig, root: string): GeneratedFile[]
 export interface RefreshToken {
   id: string;
   userId: string;
-  token: string;
+  tokenHash: string;
   expiresAt: Date;
+  revokedAt?: Date;
+  replacedByTokenId?: string;
 }
 
 export interface Role {
@@ -268,6 +271,16 @@ export interface Role {
 export interface Permission {
   id: string;
   name: string;
+}
+
+export interface UserRole {
+  userId: string;
+  roleId: string;
+}
+
+export interface RolePermission {
+  roleId: string;
+  permissionId: string;
 }
 `
     },
@@ -322,55 +335,26 @@ export class PasswordHasher {
     },
     {
       path: `${root}/src/infrastructure/security/argon2PasswordHasher.ts`,
-      content: `export class Argon2PasswordHasher {
-  async hash(password: string): Promise<string> {
-    return password;
-  }
+      content: `import { PasswordHasher } from "./passwordHasher.js";
 
-  async compare(password: string, hash: string): Promise<boolean> {
-    return password === hash;
-  }
+export class Argon2PasswordHasher extends PasswordHasher {
+  // bcryptjs is the default generated dependency. Replace this class with
+  // a real argon2 implementation after adding the argon2 package.
 }
 `
     },
     {
       path: `${root}/src/infrastructure/security/jwtService.ts`,
-      content: `import jwt from "jsonwebtoken";
-import { User } from "../../domain/entities/User.js";
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export class JwtService {
-  private readonly secret = requiredJwtSecret();
-
-  issue(user: User): AuthTokens {
-    return {
-      accessToken: jwt.sign({ sub: user.id, roles: user.roles, permissions: user.permissions }, this.secret, { expiresIn: process.env.JWT_EXPIRES ?? "15m" }),
-      refreshToken: jwt.sign({ sub: user.id, type: "refresh" }, this.secret, { expiresIn: process.env.JWT_REFRESH_EXPIRES ?? "7d" })
-    };
-  }
-
-  verify(token: string): string {
-    const payload = jwt.verify(token, this.secret);
-    if (typeof payload === "string" || typeof payload.sub !== "string") {
-      throw new Error("Invalid token");
-    }
-    return payload.sub;
-  }
-}
-`
+      content: jwtServiceFile(productionAuth)
     },
     {
       path: `${root}/src/infrastructure/security/tokenProvider.ts`,
       content: `import { User } from "../../domain/entities/User.js";
-import { AuthTokens, JwtService } from "./jwtService.js";
+import { AuthTokens, JwtService, VerifiedToken } from "./jwtService.js";
 
 export interface TokenProvider {
   issue(user: User): AuthTokens;
-  verify(token: string): string;
+  verify(token: string): VerifiedToken;
 }
 
 export class JwtTokenProvider extends JwtService implements TokenProvider {}
@@ -378,95 +362,19 @@ export class JwtTokenProvider extends JwtService implements TokenProvider {}
     },
     {
       path: `${root}/src/application/use-cases/registerUseCase.ts`,
-      content: `import { randomUUID } from "node:crypto";
-import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
-import { PasswordHasher } from "../../infrastructure/security/passwordHasher.js";
-import { JwtService, AuthTokens } from "../../infrastructure/security/jwtService.js";
-
-export class RegisterUseCase {
-  constructor(
-    private readonly users: UserRepositoryPort,
-    private readonly hasher: PasswordHasher,
-    private readonly tokens: JwtService
-  ) {}
-
-  async execute(input: { email: string; password: string }): Promise<AuthTokens> {
-    if (this.users.findByEmail(input.email)) {
-      throw new Error("User already exists");
-    }
-    const user = this.users.save({
-      id: randomUUID(),
-      email: input.email,
-      passwordHash: await this.hasher.hash(input.password),
-      roles: ["user"],
-      permissions: ["read"]
-    });
-    return this.tokens.issue(user);
-  }
-}
-`
+      content: registerUseCaseFile(productionAuth)
     },
     {
       path: `${root}/src/application/use-cases/loginUseCase.ts`,
-      content: `import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
-import { PasswordHasher } from "../../infrastructure/security/passwordHasher.js";
-import { JwtService, AuthTokens } from "../../infrastructure/security/jwtService.js";
-
-export class LoginUseCase {
-  constructor(
-    private readonly users: UserRepositoryPort,
-    private readonly hasher: PasswordHasher,
-    private readonly tokens: JwtService
-  ) {}
-
-  async execute(input: { email: string; password: string }): Promise<AuthTokens> {
-    const user = this.users.findByEmail(input.email);
-    if (!user || !(await this.hasher.compare(input.password, user.passwordHash))) {
-      throw new Error("Invalid credentials");
-    }
-    return this.tokens.issue(user);
-  }
-}
-`
+      content: loginUseCaseFile(productionAuth)
     },
     {
       path: `${root}/src/application/use-cases/refreshTokenUseCase.ts`,
-      content: `import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
-import { AuthTokens, JwtService } from "../../infrastructure/security/jwtService.js";
-
-export class RefreshTokenUseCase {
-  constructor(
-    private readonly users: UserRepositoryPort,
-    private readonly tokens: JwtService
-  ) {}
-
-  execute(refreshToken: string): AuthTokens {
-    const userId = this.tokens.verify(refreshToken);
-    const user = this.users.findById(userId);
-    if (!user) {
-      throw new Error("Invalid refresh token");
-    }
-    return this.tokens.issue(user);
-  }
-}
-
-function requiredJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("JWT_SECRET is required in production");
-  }
-  return secret ?? "dev-only-change-me";
-}
-`
+      content: refreshTokenUseCaseFile(productionAuth)
     },
     {
       path: `${root}/src/application/use-cases/logoutUseCase.ts`,
-      content: `export class LogoutUseCase {
-  execute(_refreshToken?: string): { revoked: boolean } {
-    return { revoked: true };
-  }
-}
-`
+      content: logoutUseCaseFile(productionAuth)
     },
     {
       path: `${root}/src/presentation/middleware/authMiddleware.ts`,
@@ -482,7 +390,8 @@ export function authMiddleware(tokens = new JwtService()) {
       return;
     }
     try {
-      response.locals.userId = tokens.verify(token);
+      const verified = tokens.verify(token);
+      response.locals.userId = verified.userId;
       response.locals.roles = [];
       response.locals.permissions = [];
       next();
@@ -495,9 +404,336 @@ export function authMiddleware(tokens = new JwtService()) {
     },
     {
       path: `${root}/src/presentation/routes/authRoutes.ts`,
-      content: `import { Router } from "express";
+      content: authRoutesFile(productionAuth)
+    }
+  ];
+
+  if (productionAuth) {
+    files.push(...productionAuthFiles(root));
+  }
+
+  return files;
+}
+
+function productionAuthFiles(root: string): GeneratedFile[] {
+  return [
+    {
+      path: `${root}/src/shared/config/authConfig.ts`,
+      content: `export interface AuthConfig {
+  jwtSecret: string;
+  accessTokenTtl: string;
+  refreshTokenTtlDays: number;
+}
+
+export function loadAuthConfig(): AuthConfig {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error("JWT_SECRET is required when auth-mode is production");
+  }
+
+  return {
+    jwtSecret,
+    accessTokenTtl: process.env.JWT_EXPIRES ?? "15m",
+    refreshTokenTtlDays: Number(process.env.JWT_REFRESH_TTL_DAYS ?? 7)
+  };
+}
+`
+    },
+    {
+      path: `${root}/src/application/ports/refreshTokenRepositoryPort.ts`,
+      content: `import { RefreshToken } from "../../domain/entities/User.js";
+
+export interface RefreshTokenRepositoryPort {
+  findByHash(tokenHash: string): RefreshToken | undefined;
+  save(token: RefreshToken): RefreshToken;
+  revoke(tokenHash: string, replacedByTokenId?: string): boolean;
+}
+`
+    },
+    {
+      path: `${root}/src/application/ports/accessControlRepositoryPort.ts`,
+      content: `import { Permission, Role, RolePermission, UserRole } from "../../domain/entities/User.js";
+
+export interface AccessControlRepositoryPort {
+  listRoles(): Role[];
+  listPermissions(): Permission[];
+  listUserRoles(userId: string): UserRole[];
+  listRolePermissions(roleId: string): RolePermission[];
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/repositories/refreshTokenRepository.ts`,
+      content: `import { RefreshTokenRepositoryPort } from "../../application/ports/refreshTokenRepositoryPort.js";
+import { RefreshToken } from "../../domain/entities/User.js";
+
+export class RefreshTokenRepository implements RefreshTokenRepositoryPort {
+  private readonly tokens = new Map<string, RefreshToken>();
+
+  findByHash(tokenHash: string): RefreshToken | undefined {
+    return this.tokens.get(tokenHash);
+  }
+
+  save(token: RefreshToken): RefreshToken {
+    this.tokens.set(token.tokenHash, token);
+    return token;
+  }
+
+  revoke(tokenHash: string, replacedByTokenId?: string): boolean {
+    const current = this.tokens.get(tokenHash);
+    if (!current) {
+      return false;
+    }
+    this.tokens.set(tokenHash, { ...current, revokedAt: new Date(), replacedByTokenId });
+    return true;
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/repositories/accessControlRepository.ts`,
+      content: `import { AccessControlRepositoryPort } from "../../application/ports/accessControlRepositoryPort.js";
+import { Permission, Role, RolePermission, UserRole } from "../../domain/entities/User.js";
+
+export class AccessControlRepository implements AccessControlRepositoryPort {
+  private readonly permissions: Permission[] = [
+    { id: "perm-read", name: "read" },
+    { id: "perm-create", name: "create" },
+    { id: "perm-update", name: "update" },
+    { id: "perm-delete", name: "delete" },
+    { id: "perm-manage", name: "manage" }
+  ];
+  private readonly roles: Role[] = [
+    { id: "role-user", name: "user", permissions: this.permissions.filter((permission) => permission.name === "read") },
+    { id: "role-admin", name: "admin", permissions: this.permissions }
+  ];
+  private readonly userRoles: UserRole[] = [];
+  private readonly rolePermissions: RolePermission[] = this.roles.flatMap((role) => role.permissions.map((permission) => ({ roleId: role.id, permissionId: permission.id })));
+
+  listRoles(): Role[] {
+    return this.roles;
+  }
+
+  listPermissions(): Permission[] {
+    return this.permissions;
+  }
+
+  listUserRoles(userId: string): UserRole[] {
+    return this.userRoles.filter((role) => role.userId === userId);
+  }
+
+  listRolePermissions(roleId: string): RolePermission[] {
+    return this.rolePermissions.filter((permission) => permission.roleId === roleId);
+  }
+}
+`
+    },
+    {
+      path: `${root}/src/infrastructure/security/tokenHash.ts`,
+      content: `import { createHash } from "node:crypto";
+
+export function tokenHash(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+`
+    }
+  ];
+}
+
+function jwtServiceFile(productionAuth: boolean): string {
+  return `import { randomUUID } from "node:crypto";
+import jwt from "jsonwebtoken";
+import { User } from "../../domain/entities/User.js";
+${productionAuth ? `import { loadAuthConfig } from "../../shared/config/authConfig.js";` : ""}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  refreshTokenId: string;
+}
+
+export interface VerifiedToken {
+  userId: string;
+  tokenId?: string;
+  type?: string;
+}
+
+export class JwtService {
+  private readonly config = ${productionAuth ? "loadAuthConfig()" : "{ jwtSecret: requiredJwtSecret(), accessTokenTtl: process.env.JWT_EXPIRES ?? \"15m\" }"};
+
+  issue(user: User): AuthTokens {
+    const refreshTokenId = randomUUID();
+    return {
+      accessToken: jwt.sign({ sub: user.id, roles: user.roles, permissions: user.permissions }, this.config.jwtSecret, { expiresIn: this.config.accessTokenTtl }),
+      refreshToken: jwt.sign({ sub: user.id, type: "refresh", jti: refreshTokenId }, this.config.jwtSecret, { expiresIn: process.env.JWT_REFRESH_EXPIRES ?? "7d" }),
+      refreshTokenId
+    };
+  }
+
+  verify(token: string): VerifiedToken {
+    const payload = jwt.verify(token, this.config.jwtSecret);
+    if (typeof payload === "string" || typeof payload.sub !== "string") {
+      throw new Error("Invalid token");
+    }
+    return {
+      userId: payload.sub,
+      tokenId: typeof payload.jti === "string" ? payload.jti : undefined,
+      type: typeof payload.type === "string" ? payload.type : undefined
+    };
+  }
+}
+
+function requiredJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is required in production");
+  }
+  return secret ?? "dev-only-change-me";
+}
+`;
+}
+
+function registerUseCaseFile(productionAuth: boolean): string {
+  return `import { randomUUID } from "node:crypto";
+import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
+import { PasswordHasher } from "../../infrastructure/security/passwordHasher.js";
+import { JwtService, AuthTokens } from "../../infrastructure/security/jwtService.js";
+${productionAuth ? `import { RefreshTokenRepositoryPort } from "../ports/refreshTokenRepositoryPort.js";
+import { tokenHash } from "../../infrastructure/security/tokenHash.js";` : ""}
+
+export class RegisterUseCase {
+  constructor(
+    private readonly users: UserRepositoryPort,
+    private readonly hasher: PasswordHasher,
+    private readonly tokens: JwtService${productionAuth ? `,
+    private readonly refreshTokens: RefreshTokenRepositoryPort` : ""}
+  ) {}
+
+  async execute(input: { email: string; password: string }): Promise<AuthTokens> {
+    if (this.users.findByEmail(input.email)) {
+      throw new Error("User already exists");
+    }
+    const user = this.users.save({
+      id: randomUUID(),
+      email: input.email,
+      passwordHash: await this.hasher.hash(input.password),
+      roles: ["user"],
+      permissions: ["read"]
+    });
+    const issued = this.tokens.issue(user);
+    ${productionAuth ? `this.refreshTokens.save({
+      id: issued.refreshTokenId,
+      userId: user.id,
+      tokenHash: tokenHash(issued.refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    });` : ""}
+    return issued;
+  }
+}
+`;
+}
+
+function loginUseCaseFile(productionAuth: boolean): string {
+  return `import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
+import { PasswordHasher } from "../../infrastructure/security/passwordHasher.js";
+import { JwtService, AuthTokens } from "../../infrastructure/security/jwtService.js";
+${productionAuth ? `import { RefreshTokenRepositoryPort } from "../ports/refreshTokenRepositoryPort.js";
+import { tokenHash } from "../../infrastructure/security/tokenHash.js";` : ""}
+
+export class LoginUseCase {
+  constructor(
+    private readonly users: UserRepositoryPort,
+    private readonly hasher: PasswordHasher,
+    private readonly tokens: JwtService${productionAuth ? `,
+    private readonly refreshTokens: RefreshTokenRepositoryPort` : ""}
+  ) {}
+
+  async execute(input: { email: string; password: string }): Promise<AuthTokens> {
+    const user = this.users.findByEmail(input.email);
+    if (!user || !(await this.hasher.compare(input.password, user.passwordHash))) {
+      throw new Error("Invalid credentials");
+    }
+    const issued = this.tokens.issue(user);
+    ${productionAuth ? `this.refreshTokens.save({
+      id: issued.refreshTokenId,
+      userId: user.id,
+      tokenHash: tokenHash(issued.refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    });` : ""}
+    return issued;
+  }
+}
+`;
+}
+
+function refreshTokenUseCaseFile(productionAuth: boolean): string {
+  return `import { UserRepositoryPort } from "../ports/userRepositoryPort.js";
+import { AuthTokens, JwtService } from "../../infrastructure/security/jwtService.js";
+${productionAuth ? `import { RefreshTokenRepositoryPort } from "../ports/refreshTokenRepositoryPort.js";
+import { tokenHash } from "../../infrastructure/security/tokenHash.js";` : ""}
+
+export class RefreshTokenUseCase {
+  constructor(
+    private readonly users: UserRepositoryPort,
+    private readonly tokens: JwtService${productionAuth ? `,
+    private readonly refreshTokens: RefreshTokenRepositoryPort` : ""}
+  ) {}
+
+  execute(refreshToken: string): AuthTokens {
+    const verified = this.tokens.verify(refreshToken);
+    ${productionAuth ? `const currentHash = tokenHash(refreshToken);
+    const stored = this.refreshTokens.findByHash(currentHash);
+    if (!stored || stored.revokedAt || stored.expiresAt.getTime() <= Date.now()) {
+      throw new Error("Invalid refresh token");
+    }` : ""}
+    const user = this.users.findById(verified.userId);
+    if (!user) {
+      throw new Error("Invalid refresh token");
+    }
+    const issued = this.tokens.issue(user);
+    ${productionAuth ? `this.refreshTokens.revoke(currentHash, issued.refreshTokenId);
+    this.refreshTokens.save({
+      id: issued.refreshTokenId,
+      userId: user.id,
+      tokenHash: tokenHash(issued.refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    });` : ""}
+    return issued;
+  }
+}
+`;
+}
+
+function logoutUseCaseFile(productionAuth: boolean): string {
+  if (!productionAuth) {
+    return `export class LogoutUseCase {
+  execute(_refreshToken?: string): { revoked: boolean } {
+    return { revoked: true };
+  }
+}
+`;
+  }
+
+  return `import { RefreshTokenRepositoryPort } from "../ports/refreshTokenRepositoryPort.js";
+import { tokenHash } from "../../infrastructure/security/tokenHash.js";
+
+export class LogoutUseCase {
+  constructor(private readonly refreshTokens: RefreshTokenRepositoryPort) {}
+
+  execute(refreshToken?: string): { revoked: boolean } {
+    return { revoked: refreshToken ? this.refreshTokens.revoke(tokenHash(refreshToken)) : false };
+  }
+}
+`;
+}
+
+function authRoutesFile(productionAuth: boolean): string {
+  return `import { Router } from "express";
 import { LoginUseCase } from "../../application/use-cases/loginUseCase.js";
+import { LogoutUseCase } from "../../application/use-cases/logoutUseCase.js";
+import { RefreshTokenUseCase } from "../../application/use-cases/refreshTokenUseCase.js";
 import { RegisterUseCase } from "../../application/use-cases/registerUseCase.js";
+${productionAuth ? `import { RefreshTokenRepository } from "../../infrastructure/repositories/refreshTokenRepository.js";` : ""}
 import { UserRepository } from "../../infrastructure/repositories/userRepository.js";
 import { JwtService } from "../../infrastructure/security/jwtService.js";
 import { PasswordHasher } from "../../infrastructure/security/passwordHasher.js";
@@ -506,10 +742,13 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 export function createAuthRouter(): Router {
   const router = Router();
   const users = new UserRepository();
+  ${productionAuth ? "const refreshTokens = new RefreshTokenRepository();" : ""}
   const hasher = new PasswordHasher();
   const tokens = new JwtService();
-  const register = new RegisterUseCase(users, hasher, tokens);
-  const login = new LoginUseCase(users, hasher, tokens);
+  const register = new RegisterUseCase(users, hasher, tokens${productionAuth ? ", refreshTokens" : ""});
+  const login = new LoginUseCase(users, hasher, tokens${productionAuth ? ", refreshTokens" : ""});
+  const refresh = new RefreshTokenUseCase(users, tokens${productionAuth ? ", refreshTokens" : ""});
+  const logout = new LogoutUseCase(${productionAuth ? "refreshTokens" : ""});
 
   router.post("/register", async (request, response) => {
     try {
@@ -525,15 +764,23 @@ export function createAuthRouter(): Router {
       response.sendStatus(401);
     }
   });
-  router.get("/me", authMiddleware(tokens), (request, response) => {
+  router.post("/refresh", (request, response) => {
+    try {
+      response.json(refresh.execute(request.body.refreshToken));
+    } catch {
+      response.sendStatus(401);
+    }
+  });
+  router.post("/logout", (request, response) => {
+    response.json(logout.execute(request.body.refreshToken));
+  });
+  router.get("/me", authMiddleware(tokens), (_request, response) => {
     response.json({ id: response.locals.userId });
   });
 
   return router;
 }
-`
-    }
-  ];
+`;
 }
 
 function generateRelationSupportFiles(config: ProjectConfig, root: string): GeneratedFile[] {
@@ -1239,10 +1486,64 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-${config.entities?.map((entity) => prismaModel(entity, config)).join("\n\n") ?? ""}
+${[
+  ...(config.entities?.map((entity) => prismaModel(entity, config)) ?? []),
+  ...(config.auth === "jwt" && config.authMode === "production" ? [authPrismaModels()] : [])
+].join("\n\n")}
 `
     }
   ];
+}
+
+function authPrismaModels(): string {
+  return `model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String
+  refreshTokens RefreshToken[]
+  userRoles    UserRole[]
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid())
+  userId            String
+  tokenHash         String    @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?
+  user              User      @relation(fields: [userId], references: [id])
+}
+
+model Role {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}`;
 }
 
 function prismaModel(entity: EntityConfig, config: ProjectConfig): string {

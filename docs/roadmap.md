@@ -130,6 +130,8 @@ Status: completed first-pass core refactor. CLI routing is split into command/pa
 
 Goal: replace auth scaffold with production-oriented generated auth.
 
+Status: completed for TypeScript Express JWT generation. `--auth-mode production` generates JWT config, refresh-token hash storage and rotation, logout, RBAC metadata, and Prisma auth models.
+
 - JWT production mode
   - Add `--auth-mode production`
   - Require `JWT_SECRET` in production
