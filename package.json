@@ -58,7 +58,7 @@
     "ts-morph": "^23.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.30",
+    "@types/node": "^25.9.1",
     "tsx": "^4.7.1",
     "typescript": "^6.0.3"
   },
