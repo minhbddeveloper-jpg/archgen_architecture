@@ -25,6 +25,7 @@
     "templates",
     "examples",
     "docs",
+    "!docs/image",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -59,7 +60,7 @@
   "devDependencies": {
     "@types/node": "^20.11.30",
     "tsx": "^4.7.1",
-    "typescript": "^5.4.2"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=20"

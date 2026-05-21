@@ -481,7 +481,7 @@ async function registerFastApiRouter(root: string, entity: EntityConfig, dryRun:
   const current = await readFile(mainPath, "utf8");
   let next = current.includes(importLine) ? current : current.replace("from fastapi import FastAPI\n", `from fastapi import FastAPI\n${importLine}\n`);
   if (!next.includes(includeLine)) {
-    next = next.replace(/app = FastAPI\([^\n]*\)\n/, (match) => `${match}${includeLine}\n`);
+    next = next.replace(/app = FastAPI\([^\n]*\)\n/, (match: string) => `${match}${includeLine}\n`);
   }
   if (next !== current && !dryRun) await writeFile(mainPath, next, "utf8");
   return next !== current ? ["app/main.py"] : [];
@@ -740,7 +740,7 @@ async function patchCreateUseCase(root: string, entity: EntityConfig, fields: En
   }
 
   const lines = missingFields.map((field) => `      ${toCamelCase(field.name)}: input.${toCamelCase(field.name)}`);
-  const next = current.replace(/(\n\s+)([a-zA-Z0-9_]+: input\.[a-zA-Z0-9_]+)(\n\s+\}\);)/, (_match, indent: string, lastFieldLine: string, close: string) => {
+  const next = current.replace(/(\n\s+)([a-zA-Z0-9_]+: input\.[a-zA-Z0-9_]+)(\n\s+\}\);)/, (_match: string, indent: string, lastFieldLine: string, close: string) => {
     return `${indent}${lastFieldLine},\n${lines.join(",\n")}${close}`;
   });
 
@@ -923,7 +923,7 @@ async function patchRubyEntity(root: string, relativePath: string, entity: Entit
   const current = await readFile(path, "utf8");
   const addedFields = entity.fields.filter((field) => !new RegExp(`:${toSnakeCase(field.name)}\\b`).test(current));
   if (addedFields.length === 0) return { updatedFiles: [], addedFields };
-  const next = current.replace(/attr_accessor ([^\n]+)/, (match) => `${match}, ${addedFields.map((field) => `:${toSnakeCase(field.name)}`).join(", ")}`);
+  const next = current.replace(/attr_accessor ([^\n]+)/, (match: string) => `${match}, ${addedFields.map((field) => `:${toSnakeCase(field.name)}`).join(", ")}`);
   if (!dryRun) await writeFile(path, next, "utf8");
   return { updatedFiles: [relativePath], addedFields };
 }
