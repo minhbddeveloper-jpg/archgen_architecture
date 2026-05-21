@@ -80,6 +80,8 @@ Status: completed in the codebase. Generated NestJS e2e is available through `np
 
 Goal: move schema upgrade beyond additive-only changes.
 
+Status: completed in the codebase. Schema upgrade now reports risky changes during dry-run and requires `--force` before applying additive parts of risky upgrades.
+
 - Schema upgrade plan
   - Detect added tables and columns
   - Detect removed columns

@@ -77,7 +77,7 @@ export function createCli(engine: GeneratorEngine, extender: ProjectExtender, pl
       if (command === "upgrade") {
         const [target, ...upgradeArgs] = rest;
         if (target !== "schema") {
-          throw new Error("Usage: arxgen upgrade schema --from-sql schema.sql [--project <dir>] [--validation zod] [--dry-run]");
+          throw new Error("Usage: arxgen upgrade schema --from-sql schema.sql [--project <dir>] [--validation zod] [--dry-run] [--force]");
         }
         const options = parseOptions(upgradeArgs);
         const sqlPath = requireOption(options, "from-sql");
@@ -668,7 +668,7 @@ Commands:
   add entity <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add crud <name> [--field name:type] [--project <dir>] [--validation zod] [--merge] [--force] [--dry-run]
   add schema --from-sql schema.sql [--project <dir>] [--validation zod] [--force] [--dry-run]
-  upgrade schema --from-sql schema.sql [--project <dir>] [--validation zod] [--dry-run]
+  upgrade schema --from-sql schema.sql [--project <dir>] [--validation zod] [--dry-run] [--force]
   add usecase <name> [--project <dir>] [--force] [--dry-run]
   wizard
   list plugins
@@ -780,6 +780,25 @@ function formatSchemaUpgradeResult(sqlPath: string, result: Awaited<ReturnType<P
       for (const field of change.addedFields) {
         lines.push(`  + ${field.name}:${field.type}${field.required === false ? "?" : ""}`);
       }
+      for (const field of change.removedFields) {
+        lines.push(`  - ${field.name}:${field.type}${field.required === false ? "?" : ""}`);
+      }
+      for (const field of change.typeChanges) {
+        lines.push(`  ~ ${field.name}: type ${field.from} -> ${field.to}`);
+      }
+      for (const field of change.nullableChanges) {
+        lines.push(`  ~ ${field.name}: nullable ${field.from} -> ${field.to}`);
+      }
+      for (const field of change.defaultChanges) {
+        lines.push(`  ~ ${field.name}: default ${field.from} -> ${field.to}`);
+      }
+    }
+  }
+
+  if (result.warnings.length) {
+    lines.push("Warnings:");
+    for (const warning of result.warnings) {
+      lines.push(`  ${warning.destructive ? "!" : "-"} ${warning.entity}${warning.field ? `.${warning.field}` : ""}: ${warning.message}`);
     }
   }
 

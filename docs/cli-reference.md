@@ -35,6 +35,7 @@ arxgen add schema --from-sql ./schema.sql --project ./generated/api
 
 ```bash
 arxgen upgrade schema --from-sql ./schema.sql --project ./generated/api --dry-run
+arxgen upgrade schema --from-sql ./schema.sql --project ./generated/api --force
 ```
 
-Schema upgrade is additive. It does not delete or rename fields automatically.
+Schema upgrade applies additive changes and reports risky differences such as removed fields, type changes, nullability changes, and default changes. It does not delete, rename, or rewrite existing fields automatically. Risky apply runs require `--force`.

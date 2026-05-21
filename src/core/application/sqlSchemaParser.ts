@@ -11,6 +11,7 @@ interface TableColumn {
   required: boolean;
   primaryKey: boolean;
   unique: boolean;
+  indexed: boolean;
   defaultValue?: string;
   length?: number;
   precision?: number;
@@ -19,6 +20,7 @@ interface TableColumn {
 
 interface ForeignKey {
   sourceTable: string;
+  sourceColumn?: string;
   targetTable: string;
 }
 
@@ -26,6 +28,8 @@ export function parseSqlSchema(sql: string): ParsedSqlSchema {
   const normalized = stripComments(sql);
   const entities: EntityConfig[] = [];
   const relations: RelationConfig[] = [];
+
+  const indexes = extractCreateIndexes(normalized);
 
   for (const table of extractCreateTables(normalized)) {
     const tableName = normalizeIdentifier(table.name.split(".").at(-1) ?? table.name);
@@ -63,6 +67,24 @@ export function parseSqlSchema(sql: string): ParsedSqlSchema {
       }
     }
 
+    for (const indexedColumn of indexes.get(tableName) ?? []) {
+      const column = columns.find((candidate) => candidate.name === indexedColumn.name);
+      if (column) {
+        column.indexed = true;
+        column.unique = column.unique || indexedColumn.unique;
+      }
+    }
+
+    const manyToMany = detectManyToManyJoinTable(columns, foreignKeys);
+    if (manyToMany) {
+      relations.push({
+        source: toEntityName(manyToMany.sourceTable),
+        target: toEntityName(manyToMany.targetTable),
+        kind: "many-to-many"
+      });
+      continue;
+    }
+
     entities.push({
       name: toEntityName(tableName),
       fields: columns
@@ -71,11 +93,15 @@ export function parseSqlSchema(sql: string): ParsedSqlSchema {
     });
 
     relations.push(
-      ...foreignKeys.map((foreignKey) => ({
+      ...foreignKeys.flatMap((foreignKey) => [{
         source: toEntityName(foreignKey.sourceTable),
         target: toEntityName(foreignKey.targetTable),
         kind: "many-to-one" as const
-      }))
+      }, {
+        source: toEntityName(foreignKey.targetTable),
+        target: toEntityName(foreignKey.sourceTable),
+        kind: "one-to-many" as const
+      }])
     );
   }
 
@@ -83,6 +109,22 @@ export function parseSqlSchema(sql: string): ParsedSqlSchema {
     entities: dedupeEntities(entities),
     relations: dedupeRelations(relations)
   };
+}
+
+function extractCreateIndexes(sql: string): Map<string, Array<{ name: string; unique: boolean }>> {
+  const indexes = new Map<string, Array<{ name: string; unique: boolean }>>();
+  const pattern = /create\s+(unique\s+)?index\s+(?:if\s+not\s+exists\s+)?[`"\[]?[a-zA-Z_][\w$]*[`"\]]?\s+on\s+([`"\[]?[a-zA-Z_][\w$]*[`"\]]?(?:\.[`"\[]?[a-zA-Z_][\w$]*[`"\]]?)?)\s*\(([^)]+)\)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(sql)) !== null) {
+    const tableName = normalizeIdentifier(match[2].split(".").at(-1) ?? match[2]);
+    const columns = match[3].split(",").map((rawName) => normalizeIdentifier(rawName.trim().split(/\s+/)[0]));
+    const existing = indexes.get(tableName) ?? [];
+    existing.push(...columns.map((name) => ({ name, unique: Boolean(match?.[1]) })));
+    indexes.set(tableName, existing);
+  }
+
+  return indexes;
 }
 
 function extractCreateTables(sql: string): Array<{ name: string; body: string }> {
@@ -196,6 +238,7 @@ function parseColumn(definition: string): TableColumn | undefined {
     required: upper.includes("NOT NULL") || upper.includes("PRIMARY KEY"),
     primaryKey: upper.includes("PRIMARY KEY"),
     unique: upper.includes("UNIQUE"),
+    indexed: false,
     defaultValue: rest.match(/\bdefault\s+([^,\s]+)/i)?.[1],
     ...parseTypeOptions(type)
   };
@@ -213,7 +256,8 @@ function parseTypeOptions(sqlType: string): Pick<TableColumn, "length" | "precis
 function applyTableConstraint(columns: TableColumn[], definition: string): void {
   const uniqueMatch = definition.match(/unique\s*\(([^)]+)\)/i);
   const indexMatch = definition.match(/(?:index|key)\s+[a-zA-Z_][\w$]*\s*\(([^)]+)\)/i);
-  const names = uniqueMatch?.[1] ?? indexMatch?.[1];
+  const primaryKeyMatch = definition.match(/primary\s+key\s*\(([^)]+)\)/i);
+  const names = uniqueMatch?.[1] ?? indexMatch?.[1] ?? primaryKeyMatch?.[1];
   if (!names) return;
 
   for (const rawName of names.split(",")) {
@@ -221,19 +265,25 @@ function applyTableConstraint(columns: TableColumn[], definition: string): void 
     const column = columns.find((candidate) => candidate.name === name);
     if (column) {
       if (uniqueMatch) column.unique = true;
+      if (indexMatch) column.indexed = true;
+      if (primaryKeyMatch) {
+        column.primaryKey = true;
+        column.required = true;
+      }
     }
   }
 }
 
 function parseTableForeignKey(sourceTable: string, definition: string): ForeignKey | undefined {
-  const match = definition.match(/foreign\s+key\s*\([^)]+\)\s+references\s+([`"\[]?[a-zA-Z_][\w$]*[`"\]]?(?:\.[`"\[]?[a-zA-Z_][\w$]*[`"\]]?)?)/i);
+  const match = definition.match(/foreign\s+key\s*\(([^)]+)\)\s+references\s+([`"\[]?[a-zA-Z_][\w$]*[`"\]]?(?:\.[`"\[]?[a-zA-Z_][\w$]*[`"\]]?)?)/i);
   if (!match) {
     return undefined;
   }
 
   return {
     sourceTable,
-    targetTable: normalizeIdentifier(match[1].split(".").at(-1) ?? match[1])
+    sourceColumn: normalizeIdentifier(match[1].split(",")[0].trim()),
+    targetTable: normalizeIdentifier(match[2].split(".").at(-1) ?? match[2])
   };
 }
 
@@ -245,7 +295,20 @@ function parseInlineForeignKey(sourceTable: string, definition: string): Foreign
 
   return {
     sourceTable,
+    sourceColumn: normalizeIdentifier(definition.split(/\s+/)[0]),
     targetTable: normalizeIdentifier(match[1].split(".").at(-1) ?? match[1])
+  };
+}
+
+function detectManyToManyJoinTable(columns: TableColumn[], foreignKeys: ForeignKey[]): { sourceTable: string; targetTable: string } | undefined {
+  if (foreignKeys.length !== 2) return undefined;
+  const foreignKeyColumns = new Set(foreignKeys.map((foreignKey) => foreignKey.sourceColumn).filter(Boolean));
+  const dataColumns = columns.filter((column) => !isGeneratedIdColumn(column));
+  if (dataColumns.length !== foreignKeyColumns.size) return undefined;
+  if (!dataColumns.every((column) => foreignKeyColumns.has(column.name))) return undefined;
+  return {
+    sourceTable: foreignKeys[0].targetTable,
+    targetTable: foreignKeys[1].targetTable
   };
 }
 
@@ -267,6 +330,7 @@ function toEntityField(column: TableColumn): EntityFieldConfig {
     type: mapSqlType(column.sqlType),
     required: column.required ? undefined : false,
     unique: column.unique || undefined,
+    indexed: column.indexed || undefined,
     defaultValue: column.defaultValue,
     length: column.length,
     precision: column.precision,
@@ -277,6 +341,7 @@ function toEntityField(column: TableColumn): EntityFieldConfig {
 function mapSqlType(sqlType: string): FieldType {
   const normalized = sqlType.toLowerCase();
   if (normalized.includes("uuid")) return "uuid";
+  if (normalized.startsWith("enum")) return "string";
   if (normalized.includes("text") || normalized.includes("clob")) return "text";
   if (normalized.includes("bool")) return "boolean";
   if (normalized.includes("date") || normalized.includes("time")) return "date";

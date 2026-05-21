@@ -21,9 +21,26 @@ export interface UpgradeSchemaRequest {
   validation?: ValidationProvider;
 }
 
+export interface SchemaUpgradeFieldChange {
+  name: string;
+  from: string;
+  to: string;
+}
+
+export interface SchemaUpgradeWarning {
+  entity: string;
+  field?: string;
+  message: string;
+  destructive: boolean;
+}
+
 export interface SchemaUpgradeChange {
   entity: string;
   addedFields: EntityFieldConfig[];
+  removedFields: EntityFieldConfig[];
+  typeChanges: SchemaUpgradeFieldChange[];
+  nullableChanges: SchemaUpgradeFieldChange[];
+  defaultChanges: SchemaUpgradeFieldChange[];
   created: boolean;
 }
 
@@ -38,6 +55,7 @@ export interface ExtendProjectResult {
 
 export interface UpgradeSchemaResult extends ExtendProjectResult {
   changes: SchemaUpgradeChange[];
+  warnings: SchemaUpgradeWarning[];
 }
 
 interface ProjectDetection {
@@ -157,7 +175,15 @@ export class ProjectExtender {
     }
     const updatedFiles = new Set<string>();
     const changes: SchemaUpgradeChange[] = [];
+    const warnings: SchemaUpgradeWarning[] = [];
     let filesWritten = 0;
+
+    if (!options.overwrite && !options.dryRun) {
+      const riskyWarnings = await collectRiskyTypeScriptExpressWarnings(root, request.entities);
+      if (riskyWarnings.length > 0) {
+        throw new Error("Schema upgrade contains risky changes. Run with --dry-run to inspect warnings or pass --force to apply additive changes while handling destructive changes manually.");
+      }
+    }
 
     for (const entity of request.entities) {
       const className = toPascalCase(entity.name);
@@ -169,42 +195,70 @@ export class ProjectExtender {
         for (const file of result.updatedFiles) {
           updatedFiles.add(file);
         }
-        changes.push({ entity: className, addedFields: entity.fields, created: true });
+        changes.push({ entity: className, addedFields: entity.fields, removedFields: [], typeChanges: [], nullableChanges: [], defaultChanges: [], created: true });
         continue;
       }
 
       const currentFields = await readTypeScriptEntityFields(entityPath, className);
       const currentFieldNames = new Set(currentFields.map((field) => toCamelCase(field.name)));
+      const nextFieldsByName = new Map(entity.fields.map((field) => [toCamelCase(field.name), field]));
       const addedFields = entity.fields.filter((field) => !currentFieldNames.has(toCamelCase(field.name)));
-      if (addedFields.length === 0) {
+      const removedFields = currentFields.filter((field) => !nextFieldsByName.has(toCamelCase(field.name)));
+      const typeChanges: SchemaUpgradeFieldChange[] = [];
+      const nullableChanges: SchemaUpgradeFieldChange[] = [];
+      const defaultChanges: SchemaUpgradeFieldChange[] = [];
+
+      for (const currentField of currentFields) {
+        const nextField = nextFieldsByName.get(toCamelCase(currentField.name));
+        if (!nextField) continue;
+        if (currentField.type !== nextField.type) {
+          typeChanges.push({ name: toCamelCase(currentField.name), from: currentField.type, to: nextField.type });
+        }
+        const currentRequired = currentField.required ?? true;
+        const nextRequired = nextField.required ?? true;
+        if (currentRequired !== nextRequired) {
+          nullableChanges.push({ name: toCamelCase(currentField.name), from: currentRequired ? "required" : "optional", to: nextRequired ? "required" : "optional" });
+        }
+        const currentDefault = currentField.defaultValue ?? "none";
+        const nextDefault = nextField.defaultValue ?? "none";
+        if (currentDefault !== nextDefault) {
+          defaultChanges.push({ name: toCamelCase(currentField.name), from: currentDefault, to: nextDefault });
+        }
+      }
+
+      warnings.push(...schemaWarnings(className, removedFields, typeChanges, nullableChanges, defaultChanges));
+
+      if (addedFields.length === 0 && removedFields.length === 0 && typeChanges.length === 0 && nullableChanges.length === 0 && defaultChanges.length === 0) {
         continue;
       }
 
-      if (await patchTypeScriptEntity(entityPath, className, addedFields, Boolean(options.dryRun))) {
-        updatedFiles.add(`src/domain/entities/${className}.ts`);
-      }
-      if (await patchCreateUseCase(root, entity, addedFields, Boolean(options.dryRun))) {
-        updatedFiles.add(`src/application/use-cases/create${className}UseCase.ts`);
-      }
+      if (addedFields.length > 0) {
+        if (await patchTypeScriptEntity(entityPath, className, addedFields, Boolean(options.dryRun))) {
+          updatedFiles.add(`src/domain/entities/${className}.ts`);
+        }
+        if (await patchCreateUseCase(root, entity, addedFields, Boolean(options.dryRun))) {
+          updatedFiles.add(`src/application/use-cases/create${className}UseCase.ts`);
+        }
 
-      const validationPath = join(root, "src", "presentation", "validation", `${toCamelCase(entity.name)}Schemas.ts`);
-      if (await exists(validationPath)) {
-        if (await patchValidationSchema(validationPath, className, addedFields, Boolean(options.dryRun))) {
+        const validationPath = join(root, "src", "presentation", "validation", `${toCamelCase(entity.name)}Schemas.ts`);
+        if (await exists(validationPath)) {
+          if (await patchValidationSchema(validationPath, className, addedFields, Boolean(options.dryRun))) {
+            updatedFiles.add(`src/presentation/validation/${toCamelCase(entity.name)}Schemas.ts`);
+          }
+        } else if (request.validation) {
+          const mergedEntity: EntityConfig = { ...entity, fields: [...currentFields, ...addedFields] };
+          if (!options.dryRun) {
+            await writeFile(validationPath, validationSchema(toEntityView(mergedEntity), request.validation), "utf8");
+          }
           updatedFiles.add(`src/presentation/validation/${toCamelCase(entity.name)}Schemas.ts`);
         }
-      } else if (request.validation) {
-        const mergedEntity: EntityConfig = { ...entity, fields: [...currentFields, ...addedFields] };
-        if (!options.dryRun) {
-          await writeFile(validationPath, validationSchema(toEntityView(mergedEntity), request.validation), "utf8");
+
+        if (await patchPrismaModel(root, entity, addedFields, Boolean(options.dryRun))) {
+          updatedFiles.add("prisma/schema.prisma");
         }
-        updatedFiles.add(`src/presentation/validation/${toCamelCase(entity.name)}Schemas.ts`);
       }
 
-      if (await patchPrismaModel(root, entity, addedFields, Boolean(options.dryRun))) {
-        updatedFiles.add("prisma/schema.prisma");
-      }
-
-      changes.push({ entity: className, addedFields, created: false });
+      changes.push({ entity: className, addedFields, removedFields, typeChanges, nullableChanges, defaultChanges, created: false });
     }
 
     return {
@@ -214,9 +268,78 @@ export class ProjectExtender {
       filesWritten,
       dryRun: options.dryRun ?? false,
       updatedFiles: [...updatedFiles],
-      changes
+      changes,
+      warnings
     };
   }
+}
+
+async function collectRiskyTypeScriptExpressWarnings(root: string, entities: EntityConfig[]): Promise<SchemaUpgradeWarning[]> {
+  const warnings: SchemaUpgradeWarning[] = [];
+  for (const entity of entities) {
+    const className = toPascalCase(entity.name);
+    const entityPath = join(root, "src", "domain", "entities", `${className}.ts`);
+    if (!(await exists(entityPath))) {
+      continue;
+    }
+
+    const currentFields = await readTypeScriptEntityFields(entityPath, className);
+    const nextFieldsByName = new Map(entity.fields.map((field) => [toCamelCase(field.name), field]));
+    const removedFields = currentFields.filter((field) => !nextFieldsByName.has(toCamelCase(field.name)));
+    const typeChanges: SchemaUpgradeFieldChange[] = [];
+    const nullableChanges: SchemaUpgradeFieldChange[] = [];
+    const defaultChanges: SchemaUpgradeFieldChange[] = [];
+
+    for (const currentField of currentFields) {
+      const nextField = nextFieldsByName.get(toCamelCase(currentField.name));
+      if (!nextField) continue;
+      if (currentField.type !== nextField.type) {
+        typeChanges.push({ name: toCamelCase(currentField.name), from: currentField.type, to: nextField.type });
+      }
+      const currentRequired = currentField.required ?? true;
+      const nextRequired = nextField.required ?? true;
+      if (currentRequired !== nextRequired) {
+        nullableChanges.push({ name: toCamelCase(currentField.name), from: currentRequired ? "required" : "optional", to: nextRequired ? "required" : "optional" });
+      }
+      const currentDefault = currentField.defaultValue ?? "none";
+      const nextDefault = nextField.defaultValue ?? "none";
+      if (currentDefault !== nextDefault) {
+        defaultChanges.push({ name: toCamelCase(currentField.name), from: currentDefault, to: nextDefault });
+      }
+    }
+
+    warnings.push(...schemaWarnings(className, removedFields, typeChanges, nullableChanges, defaultChanges).filter((warning) => warning.destructive));
+  }
+  return warnings;
+}
+
+function schemaWarnings(className: string, removedFields: EntityFieldConfig[], typeChanges: SchemaUpgradeFieldChange[], nullableChanges: SchemaUpgradeFieldChange[], defaultChanges: SchemaUpgradeFieldChange[]): SchemaUpgradeWarning[] {
+  return [
+    ...removedFields.map((field) => ({
+      entity: className,
+      field: toCamelCase(field.name),
+      message: `Column ${toCamelCase(field.name)} is no longer present in the SQL schema. arxgen does not delete generated code automatically.`,
+      destructive: true
+    })),
+    ...typeChanges.map((change) => ({
+      entity: className,
+      field: change.name,
+      message: `Column ${change.name} type changed from ${change.from} to ${change.to}. Review generated code and database migration manually.`,
+      destructive: true
+    })),
+    ...nullableChanges.map((change) => ({
+      entity: className,
+      field: change.name,
+      message: `Column ${change.name} nullability changed from ${change.from} to ${change.to}.`,
+      destructive: change.to === "required"
+    })),
+    ...defaultChanges.map((change) => ({
+      entity: className,
+      field: change.name,
+      message: `Column ${change.name} default changed from ${change.from} to ${change.to}. Defaults are reported but not patched into generated code.`,
+      destructive: false
+    }))
+  ];
 }
 
 async function filterExistingSharedFiles(root: string, files: GeneratedFile[], options: WriteFilesOptions): Promise<GeneratedFile[]> {
@@ -329,6 +452,10 @@ async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDet
       changes.push({
         entity: toPascalCase(entity.name),
         addedFields: entity.fields,
+        removedFields: [],
+        typeChanges: [],
+        nullableChanges: [],
+        defaultChanges: [],
         created: true
       });
       continue;
@@ -344,6 +471,10 @@ async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDet
     changes.push({
       entity: toPascalCase(entity.name),
       addedFields: patch.addedFields,
+      removedFields: [],
+      typeChanges: [],
+      nullableChanges: [],
+      defaultChanges: [],
       created: false
     });
   }
@@ -355,7 +486,8 @@ async function upgradeSchemaForDetectedStack(root: string, detection: ProjectDet
     filesWritten,
     dryRun: options.dryRun ?? false,
     updatedFiles: [...updatedFiles],
-    changes
+    changes,
+    warnings: []
   };
 }
 

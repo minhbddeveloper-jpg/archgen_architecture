@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0
+
+- Added v1.7 schema upgrade warnings for removed fields, type changes, nullability changes, and default changes.
+- Added `--force` safety behavior for risky schema upgrades.
+- Improved SQL parsing for indexes, unique indexes, enum fields, composite primary keys, and many-to-many join tables.
+- Added tests for v1.7 SQL metadata parsing and risky schema upgrade previews.
+
 ## 1.6.1
 
 - Added security policy, Dependabot, CI build step, issue templates, PR template, contributing guide, code of conduct, and npm metadata.

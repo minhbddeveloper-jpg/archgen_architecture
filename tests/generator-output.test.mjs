@@ -4,10 +4,51 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { parseSqlSchema } from "../dist/src/core/application/sqlSchemaParser.js";
 
 function readNormalized(path) {
   return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 }
+
+test("parses v1.7 SQL metadata for indexes, enums, composite keys, and many-to-many joins", () => {
+  const schema = parseSqlSchema(`
+CREATE TABLE students (
+  id uuid primary key,
+  email varchar(180) not null,
+  status enum('active', 'blocked') default 'active',
+  created_at timestamp not null,
+  unique (email)
+);
+
+CREATE INDEX idx_students_status ON students(status);
+
+CREATE TABLE courses (
+  id uuid primary key,
+  title varchar(160) not null
+);
+
+CREATE TABLE student_courses (
+  student_id uuid not null,
+  course_id uuid not null,
+  primary key (student_id, course_id),
+  foreign key (student_id) references students(id),
+  foreign key (course_id) references courses(id)
+);
+`);
+
+  assert.deepEqual(schema.entities.map((entity) => entity.name), ["student", "course"]);
+  const student = schema.entities.find((entity) => entity.name === "student");
+  assert.ok(student);
+  const email = student.fields.find((field) => field.name === "email");
+  assert.equal(email?.type, "string");
+  assert.equal(email?.unique, true);
+  assert.equal(email?.length, 180);
+  assert.equal(email?.precision, 180);
+  assert.equal(student.fields.find((field) => field.name === "status")?.type, "string");
+  assert.equal(student.fields.find((field) => field.name === "status")?.indexed, true);
+  assert.equal(student.fields.find((field) => field.name === "createdAt")?.type, "date");
+  assert.deepEqual(schema.relations, [{ source: "student", target: "course", kind: "many-to-many" }]);
+});
 
 test("generates TypeScript Express clean architecture output with ports and specific use cases", () => {
   const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
@@ -565,6 +606,105 @@ test("upgrades an existing Express project from a changed SQL schema", () => {
     const prismaSchema = readNormalized(join(projectRoot, "prisma/schema.prisma"));
     assert.match(prismaSchema, /phone String\?/);
     assert.match(prismaSchema, /age Float\?/);
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("reports v1.7 schema upgrade warnings and requires force for risky changes", () => {
+  const outputRoot = mkdtempSync(join(tmpdir(), "arxgen-test-"));
+  const sqlPath = join(outputRoot, "schema.sql");
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "dist/bin/arxgen.js",
+        "create",
+        "--name",
+        "school-api",
+        "--language",
+        "typescript",
+        "--framework",
+        "express",
+        "--entity",
+        "student",
+        "--field",
+        "name:string",
+        "--field",
+        "email:string",
+        "--field",
+        "age:number",
+        "--out",
+        outputRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    writeFileSync(sqlPath, `CREATE TABLE students (
+  id uuid primary key,
+  name int not null,
+  age int not null default 18,
+  phone varchar(40)
+);
+`, "utf8");
+
+    const projectRoot = join(outputRoot, "school-api");
+    const preview = execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "upgrade",
+        "schema",
+        "--from-sql",
+        sqlPath,
+        "--project",
+        projectRoot,
+        "--dry-run"
+      ],
+      { cwd: process.cwd(), stdio: "pipe", encoding: "utf8" }
+    );
+
+    assert.match(preview, /Schema upgrade preview/);
+    assert.match(preview, /\+ phone:string\?/);
+    assert.match(preview, /- email:string/);
+    assert.match(preview, /~ name: type string -> number/);
+    assert.match(preview, /~ age: default none -> 18/);
+    assert.match(preview, /Warnings:/);
+
+    assert.throws(() => execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "upgrade",
+        "schema",
+        "--from-sql",
+        sqlPath,
+        "--project",
+        projectRoot
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    ), /Schema upgrade contains risky changes/);
+
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), "dist/bin/arxgen.js"),
+        "upgrade",
+        "schema",
+        "--from-sql",
+        sqlPath,
+        "--project",
+        projectRoot,
+        "--force"
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+
+    const entity = readNormalized(join(projectRoot, "src/domain/entities/Student.ts"));
+    assert.match(entity, /phone\?: string/);
+    assert.match(entity, /email: string/);
+    assert.match(entity, /name: string/);
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
   }
